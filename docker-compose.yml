@@ -1,0 +1,62 @@
+services:
+  # Основной сервис мониторинга Vigilum
+  vigilum:
+    build:
+      context: .
+      dockerfile: build/Dockerfile
+    image: vigilum:1.1.0
+    container_name: vigilum
+    volumes:
+      - ./config.yaml:/app/config.yaml
+    environment:
+      - CONFIG_PATH=/app/config.yaml
+      - POLL_INTERVAL=5s
+      - LOG_LEVEL=INFO
+      - DEFAULT_RETRIES=3
+      - DEFAULT_RETRY_INTERVAL=1s
+      - NOTIFY_BOT_URL=http://host.docker.internal:18041/notify
+      - TZ=Europe/Moscow
+    ports:
+      - "18080:8080" # Порт для healthcheck
+    restart: unless-stopped
+
+  # Панель управления конфигурациями Vigilum
+  vigilum-admin:
+    build:
+      context: .
+      dockerfile: build/admin/Dockerfile
+    image: vigilum-admin:1.1.0
+    container_name: vigilum-admin
+    volumes:
+      - ./config.yaml:/app/config.yaml
+    environment:
+      - CONFIG_PATH=/app/config.yaml
+      - PORT=8080
+      - ADMIN_USERNAME=admin
+      - ADMIN_PASSWORD=admin
+      - VIGILUM_API_URL=http://vigilum:8080
+      - TZ=Europe/Moscow
+    ports:
+      - "18082:8080" # Внешний порт панели управления: http://localhost:18082
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+	
+  # Эмулятор бота для тестирования отправки оповещений локально
+  mock-bot:
+    image: golang:1.26-alpine
+    container_name: vigilum-mock-bot
+    volumes:
+      - .:/workspace
+    working_dir: /workspace/build
+    command: go run ./mock-bot/main.go
+    environment:
+      - PORT=18041
+    ports:
+      - "18041:18041"
+    depends_on:
+      - vigilum
+    restart: unless-stopped
