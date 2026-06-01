@@ -20,17 +20,28 @@ type RunningWorker struct {
 	config ServiceConfig
 }
 
+// Текущий статус работоспособности конкретного сервиса.
+type ServiceStatus struct {
+	Healthy   bool      `json:"healthy"`
+	LastCheck time.Time `json:"last_check"`
+	LastError string    `json:"last_error,omitempty"`
+}
+
 var (
 	// Карта активных воркеров для горячей перезагрузки конфигурации.
 	activeWorkers = make(map[string]*RunningWorker)
 	workersMu     sync.Mutex
 	wg            sync.WaitGroup
+
+	// Хранилище текущих статусов здоровья сервисов в оперативной памяти.
+	serviceStatuses = make(map[string]ServiceStatus)
+	statusesMu      sync.RWMutex
 )
 
 func main() {
 	// 1. Инициализация структурированного логирования со строгими уровнями.
 	initLogger()
-	slog.Info("Запуск сервиса Vigilum v1.0.0")
+	slog.Info("Запуск сервиса Vigilum v1.1.0")
 
 	// 2. Первоначальная загрузка конфигурации.
 	cfg, err := LoadConfig()
@@ -166,6 +177,11 @@ func applyConfiguration(ctx context.Context, safeConfig *SafeConfig, isInitialSt
 			worker.cancel()
 			delete(activeWorkers, id)
 
+			// Удаляем статус здоровья из глобальной карты при остановке воркера.
+			statusesMu.Lock()
+			delete(serviceStatuses, id)
+			statusesMu.Unlock()
+
 			// Отправляем уведомление, что мониторинг сервиса отключен.
 			_ = SendAlert(safeConfig, AlertDisabled, worker.config.Name, "")
 		}
@@ -180,6 +196,18 @@ func applyConfiguration(ctx context.Context, safeConfig *SafeConfig, isInitialSt
 		// Если воркера нет в активных, значит запускаем.
 		if _, exists := activeWorkers[id]; !exists {
 			slog.Info("Запуск воркера мониторинга для сервиса", "id", id, "type", newSvc.Type)
+
+			// Вывод предупреждения в лог при использовании кастомных UDP портов
+			if newSvc.Type == "udp" {
+				_, port, err := net.SplitHostPort(newSvc.Target)
+				if err == nil {
+					if port != "53" && port != "123" && port != "3478" && port != "161" && port != "5060" {
+						slog.Warn("Сервис использует кастомный UDP-порт. Проверка выполняется пустым пакетом; ее достоверность зависит от доступности ICMP-ответов на целевом хосте.", "service", id, "port", port)
+					}
+				} else {
+					slog.Warn("Сервис использует UDP-проверку без явного указания стандартного порта. Проверка выполняется пустым пакетом.", "service", id, "target", newSvc.Target)
+				}
+			}
 
 			workerCtx, workerCancel := context.WithCancel(ctx)
 			activeWorkers[id] = &RunningWorker{
@@ -229,15 +257,18 @@ func runServiceMonitorLoop(ctx context.Context, safeConfig *SafeConfig, svc Serv
 			// Выполняем проверку с учетом повторов при ошибках.
 			err := RunCheckWithRetries(ctx, safeConfig, svc)
 			isCurrentHealthy := (err == nil)
+			updateServiceStatus(svc.ID, isCurrentHealthy, err)
 
 			if isFirstRun {
-				// Запоминаем начальное состояние службы без отправки уведомлений.
+				// Запоминаем начальное состояние службы. Если сервис сразу недоступен,
+				// отправляем уведомление об аварии (DOWN), чтобы не пропустить неисправность.
 				isPreviousHealthy = isCurrentHealthy
 				isFirstRun = false
 				if isCurrentHealthy {
 					slog.Info("Начальное состояние сервиса определено: ДОСТУПЕН", "service", svc.ID)
 				} else {
 					slog.Warn("Начальное состояние сервиса определено: КРИТИЧЕСКОЕ", "service", svc.ID, "error", err)
+					_ = SendAlert(safeConfig, AlertDown, svc.Name, err.Error())
 				}
 			} else {
 				// Фиксируем изменение состояния.
@@ -272,6 +303,18 @@ func startHealthCheckServer(ctx context.Context) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_ = json.NewEncoder(w).Encode(map[string]string{"status": "healthy", "time": time.Now().Format(time.RFC3339)})
+	})
+
+	// Возвращает актуальный статус здоровья всех контролируемых сервисов в RAM.
+	mux.HandleFunc("/api/statuses", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		
+		// Чтение глобальной карты под RLock
+		statusesMu.RLock()
+		defer statusesMu.RUnlock()
+		
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(serviceStatuses)
 	})
 
 	server := &http.Server{
@@ -319,3 +362,21 @@ func startHealthCheckServer(ctx context.Context) {
 		slog.Debug("Healthcheck HTTP-сервер остановлен")
 	}()
 }
+
+// Обновляет состояние сервиса в глобальной карте.
+func updateServiceStatus(id string, healthy bool, err error) {
+	statusesMu.Lock()
+	defer statusesMu.Unlock()
+
+	var errMsg string
+	if err != nil {
+		errMsg = err.Error()
+	}
+
+	serviceStatuses[id] = ServiceStatus{
+		Healthy:   healthy,
+		LastCheck: time.Now(),
+		LastError: errMsg,
+	}
+}
+

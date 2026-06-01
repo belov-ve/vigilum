@@ -308,10 +308,45 @@
             text-overflow: ellipsis;
         }
 
+        .service-name .status-indicator {
+            margin-right: 0.5rem;
+        }
+
         .service-id {
             font-family: monospace;
             font-size: 0.8rem;
             color: var(--text-muted);
+        }
+
+        /* Service health status indicator dot */
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            transition: all 0.3s ease;
+            position: relative;
+            vertical-align: middle;
+        }
+
+        .status-online {
+            background-color: #10b981;
+            box-shadow: 0 0 8px #10b981;
+        }
+
+        .status-offline {
+            background-color: #ef4444;
+            box-shadow: 0 0 8px #ef4444;
+        }
+
+        .status-disabled {
+            background-color: #6b7280;
+            box-shadow: none;
+        }
+
+        .status-unknown {
+            background-color: #f59e0b;
+            box-shadow: 0 0 8px #f59e0b;
         }
 
         /* Toggle switch styling */
@@ -874,7 +909,7 @@
         <div class="logo-container">
             <span class="logo-icon">V</span>
             <h1 class="logo-title">Vigilum Admin</h1>
-            <span class="logo-badge">v1.0.0</span>
+            <span class="logo-badge">v1.1.0</span>
         </div>
         <button class="btn btn-success" id="btn-save-all" onclick="saveAllConfig()">
             Save Configuration
@@ -1050,7 +1085,7 @@
                         <option value="http">HTTP (GET)</option>
                         <option value="https">HTTPS (GET)</option>
                         <option value="tcp">TCP Connection</option>
-                        <option value="udp">UDP Probe / DNS</option>
+                        <option value="udp">UDP Probe</option>
                         <option value="webadmin">Webadmin Panel (X-UI)</option>
                     </select>
                 </div>
@@ -1113,6 +1148,9 @@
             templates: { down: "", up: "", enabled: "", disabled: "" },
             services: []
         };
+        let serviceStatuses = {};
+        // Последняя известная временная метка изменения конфигурации на сервере
+        let lastConfigModified = null;
         // View mode: 'grid' (cards) or 'table' (compact rows); persisted in localStorage
         let viewMode = localStorage.getItem('viewMode') || 'grid';
         // Сортировка: 'default', 'name-asc', 'name-desc', 'id-asc', 'type-asc', 'status-on'; сохраняется в localStorage
@@ -1129,6 +1167,10 @@
             // Восстанавливаем выбранный режим сортировки в выпадающем списке
             document.getElementById('sort-select').value = sortMode;
             fetchConfig();
+            
+            // Запуск периодического опроса статусов здоровья контролируемых сервисов
+            fetchStatuses();
+            setInterval(fetchStatuses, 5000);
         });
 
         function showToast(message, type = 'info') {
@@ -1292,6 +1334,12 @@
                 }
                 if (!response.ok) throw new Error('Failed to load configuration');
                 
+                // Сохраняем временную метку изменения файла конфигурации
+                const lastMod = response.headers.get('X-Config-Last-Modified');
+                if (lastMod) {
+                    lastConfigModified = lastMod;
+                }
+
                 hideLoginScreen();
                 currentConfig = await response.json();
                 
@@ -1308,6 +1356,82 @@
                 showToast(err.message, 'error');
             }
         }
+
+        // Фоновый опрос статусов здоровья сервисов из API
+        async function fetchStatuses() {
+            try {
+                const response = await fetch('/api/statuses');
+                if (response.status === 401) {
+                    return; // Игнорируем фоновые запросы при неавторизованной сессии
+                }
+                if (!response.ok) throw new Error('Failed to fetch statuses');
+                
+                // Проверяем, изменилась ли конфигурация на сервере
+                const lastMod = response.headers.get('X-Config-Last-Modified');
+                if (lastMod && lastConfigModified && lastMod !== lastConfigModified) {
+                    if (!isDirty) {
+                        // Если нет локальных правок, автоматически перезагружаем конфигурацию
+                        lastConfigModified = lastMod;
+                        showToast('Конфигурация изменена на сервере, обновляем данные...', 'info');
+                        await fetchConfig();
+                    } else {
+                        // Если есть локальные правки, предупреждаем пользователя
+                        // Обновляем метку, чтобы вывести предупреждение только один раз на это изменение
+                        lastConfigModified = lastMod;
+                        showToast('Внимание: конфигурация на сервере изменилась, но у вас есть несохраненные изменения!', 'error');
+                    }
+                } else if (lastMod && !lastConfigModified) {
+                    lastConfigModified = lastMod;
+                }
+
+                serviceStatuses = await response.json();
+                updateDOMStatuses();
+            } catch (err) {
+                console.warn('Ошибка получения статусов сервисов:', err);
+                // При сбоях связи очищаем локальный кэш, переводя маркеры в режим "Проверка" (Unknown)
+                serviceStatuses = {};
+                updateDOMStatuses();
+            }
+        }
+
+        // Синхронизация визуального состояния маркеров в DOM с данными кэша статусов
+        function updateDOMStatuses() {
+            const services = currentConfig.services || [];
+            services.forEach(svc => {
+                const gridEl = document.getElementById(`status-grid-${svc.id}`);
+                const tableEl = document.getElementById(`status-table-${svc.id}`);
+                
+                let statusClass = 'status-unknown';
+                let statusTitle = 'Checking status...';
+
+                if (!svc.enabled) {
+                    statusClass = 'status-disabled';
+                    statusTitle = 'Monitoring disabled';
+                } else if (serviceStatuses && serviceStatuses[svc.id]) {
+                    const info = serviceStatuses[svc.id];
+                    const timeStr = info.last_check ? new Date(info.last_check).toLocaleTimeString() : 'unknown';
+                    
+                    if (info.healthy) {
+                        statusClass = 'status-online';
+                        statusTitle = `Online\nLast check: ${timeStr}`;
+                    } else {
+                        statusClass = 'status-offline';
+                        statusTitle = `Offline: ${info.last_error || 'Unknown error'}\nLast check: ${timeStr}`;
+                    }
+                }
+
+                // Безопасное обновление атрибутов DOM-элемента
+                const updateEl = (el) => {
+                    if (!el) return;
+                    el.className = 'status-indicator ' + statusClass;
+                    el.title = statusTitle;
+                };
+
+                updateEl(gridEl);
+                updateEl(tableEl);
+            });
+        }
+
 
         // Render services — applies filter, then dispatches to grid or table view
         function renderServices() {
@@ -1360,6 +1484,7 @@
                 container.className = 'services-grid';
                 renderServicesGrid(container, services);
             }
+            updateDOMStatuses();
         }
 
         // Render services as cards (grid view); receives pre-filtered list
@@ -1403,7 +1528,7 @@
                 card.innerHTML = `
                     <div class="card-top">
                         <div class="service-info">
-                            <h3 class="service-name" title="${svc.name}">${svc.name}</h3>
+                            <h3 class="service-name" title="${svc.name}"><span class="status-indicator status-unknown" id="status-grid-${svc.id}" title="Checking status..."></span>&nbsp;${svc.name}</h3>
                             <span class="service-id">${svc.id}</span>
                             <div style="margin-top: 0.25rem;">
                                 <span class="type-badge">${svc.type}</span>
@@ -1443,12 +1568,15 @@
                                 <span class="slider"></span>
                             </label>
                         </td>
-                        <td><span style="font-weight:600">${svc.name}</span></td>
+                        <td style="text-align:center; min-width:40px;">
+                            <span class="status-indicator status-unknown" id="status-table-${svc.id}" title="Checking status..."></span>
+                        </td>
+                        <td style="max-width:280px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${svc.name}"><span style="font-weight:600">${svc.name}</span></td>
                         <td><span class="service-id">${svc.id}</span></td>
                         <td><span class="type-badge">${svc.type}</span></td>
-                        <td style="max-width:320px; word-break:break-all">${svc.target}</td>
+                        <td style="max-width:320px; word-break:break-all;" title="${svc.target}">${svc.target}</td>
                         <td style="text-align:center">${(svc.retries !== null && svc.retries !== undefined) ? svc.retries : '—'}</td>
-                        <td>${svc.retry_interval || '—'}</td>
+                        <td style="text-align:center">${svc.retry_interval || '—'}</td>
                         <td>
                             <div class="td-actions">
                                 <button class="btn btn-secondary btn-icon" onclick="openEditModal('${svc.id}')" title="Edit service">✏️</button>
@@ -1465,12 +1593,13 @@
                     <thead>
                         <tr>
                             <th>On</th>
+                            <th style="text-align:center">Status</th>
                             <th>Name</th>
                             <th>ID</th>
                             <th>Type</th>
                             <th>Target</th>
-                            <th>Retries</th>
-                            <th>Retry Interval</th>
+                            <th style="text-align:center" title="Number of Retries">Retries</th>
+                            <th style="text-align:center" title="Retry Interval">Ret.Pause</th>
                             <th style="text-align:right">Actions</th>
                         </tr>
                     </thead>
@@ -1495,6 +1624,12 @@
                 }
                 if (!response.ok) throw new Error('Failed to update service status');
                 
+                // Считываем новую метку изменения после переключения тумблера
+                const lastMod = response.headers.get('X-Config-Last-Modified');
+                if (lastMod) {
+                    lastConfigModified = lastMod;
+                }
+
                 // Update local config
                 const svc = currentConfig.services.find(s => s.id === id);
                 if (svc) {

@@ -78,6 +78,9 @@ var (
 	// Хранилище активных сессий (токен -> время истечения)
 	sessions   = make(map[string]time.Time)
 	sessionsMu sync.Mutex
+
+	// URL-адрес API демона Vigilum для получения текущих статусов здоровья.
+	vigilumAPIURL string
 )
 
 func main() {
@@ -97,6 +100,12 @@ func main() {
 	configPath = os.Getenv("CONFIG_PATH")
 	if configPath == "" {
 		configPath = "config.yaml"
+	}
+
+	// Считываем адрес API демона Vigilum.
+	vigilumAPIURL = os.Getenv("VIGILUM_API_URL")
+	if vigilumAPIURL == "" {
+		vigilumAPIURL = "http://vigilum:8080"
 	}
 
 	// Считываем логин и пароль администратора.
@@ -124,6 +133,7 @@ func main() {
 	mux.HandleFunc("GET /api/config", handleGetConfig)
 	mux.HandleFunc("POST /api/config", handleSaveConfig)
 	mux.HandleFunc("POST /api/services/toggle", handleToggleService)
+	mux.HandleFunc("GET /api/statuses", handleGetStatuses)
 	// Бэкап и восстановление конфигурации.
 	mux.HandleFunc("GET /api/config/export", handleExportConfig)
 	mux.HandleFunc("POST /api/config/import", handleImportConfig)
@@ -303,9 +313,12 @@ func sessionAuthMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// Отдает встроенный index.html.
+// Отдает встроенный index.html с запретом кэширования, чтобы изменения версий вступали в силу сразу.
 func handleIndex(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(indexHTML)
 }
@@ -322,6 +335,8 @@ func handleGetConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Добавляем заголовок с меткой времени изменения файла для синхронизации
+	setConfigLastModifiedHeader(w)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(cfg)
@@ -360,6 +375,8 @@ func handleSaveConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	slog.Info("Конфигурация успешно обновлена администратором")
+	// Добавляем заголовок с меткой времени изменения файла для синхронизации
+	setConfigLastModifiedHeader(w)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(`{"status":"saved"}`))
 }
@@ -416,6 +433,8 @@ func handleToggleService(w http.ResponseWriter, r *http.Request) {
 	}
 
 	slog.Info("Статус мониторинга сервиса изменен", "id", req.ID, "enabled", req.Enabled)
+	// Добавляем заголовок с меткой времени изменения файла для синхронизации
+	setConfigLastModifiedHeader(w)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(`{"status":"ok"}`))
 }
@@ -489,6 +508,8 @@ func handleImportConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	slog.Info("Конфигурация успешно импортирована из файла администратором")
+	// Добавляем заголовок с меткой времени изменения файла для синхронизации
+	setConfigLastModifiedHeader(w)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(`{"status":"imported"}`))
 }
@@ -510,6 +531,15 @@ func readConfigFile() (*Config, error) {
 	}
 
 	return &cfg, nil
+}
+
+// Добавляет заголовок X-Config-Last-Modified со временем последнего изменения файла конфигурации.
+// Это необходимо фронтенду для автоматического отслеживания внешних изменений.
+func setConfigLastModifiedHeader(w http.ResponseWriter) {
+	info, err := os.Stat(configPath)
+	if err == nil {
+		w.Header().Set("X-Config-Last-Modified", fmt.Sprintf("%d", info.ModTime().Unix()))
+	}
 }
 
 // Вспомогательная функция записи файла конфигурации.
@@ -576,3 +606,36 @@ func validateConfig(cfg Config) error {
 
 	return nil
 }
+
+// GET /api/statuses: Запрашивает текущие статусы у демона Vigilum и проксирует их клиенту.
+func handleGetStatuses(w http.ResponseWriter, r *http.Request) {
+	client := http.Client{
+		Timeout: 2 * time.Second,
+	}
+
+	resp, err := client.Get(vigilumAPIURL + "/api/statuses")
+	if err != nil {
+		slog.Warn("Не удалось связаться с демоном Vigilum для получения статусов", "url", vigilumAPIURL, "error", err)
+		// Возвращаем пустой объект, чтобы фронтенд перешел в режим ожидания (Unknown / Checking)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("{}"))
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		slog.Warn("Демон Vigilum вернул некорректный статус-код", "code", resp.StatusCode)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("{}"))
+		return
+	}
+
+	// Добавляем заголовок с меткой времени изменения файла для синхронизации
+	setConfigLastModifiedHeader(w)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.Copy(w, resp.Body)
+}
+
