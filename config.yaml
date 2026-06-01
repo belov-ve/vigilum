@@ -1,0 +1,41 @@
+templates:
+    down: "\U0001F534 Сервис {name} недоступен! \\nОшибка: {error}"
+    up: "\U0001F7E2 Сервис {name} восстановил работу"
+    enabled: "\U0001F535 Включен мониторинг сервиса {name}"
+    disabled: "\U0001F7E1 Отключен мониторинг сервиса {name}"
+    webadmin_enabled: "\U0001F535 Включен автозапуск службы {name}"
+    webadmin_disabled: "\U0001F7E1 Отключен автозапуск службы {name}"
+services:
+    - id: google-dns
+      name: Google Public DNS
+      type: ping
+      target: 8.8.8.8
+      enabled: true
+      retries: 5
+      retry_interval: 5s
+    - id: google-http
+      name: Google Search HTTP
+      type: https
+      target: https://www.google.com
+      enabled: true
+      retries: 5
+      retry_interval: 5s
+    - id: self-tcp
+      name: Vigilum Self TCP Check
+      type: tcp
+      target: 127.0.0.1:8080
+      enabled: true
+      retry_interval: 5s
+    - id: webadmin-gateway
+      name: Web-admin Gateway
+      type: webadmin
+      target: http://webadmin.local:5280
+      enabled: true
+      username: admin
+      password: admin
+    - id: local-dns
+      name: Local DNS Service
+      type: udp
+      target: dns1.local:53
+      enabled: true
+      retry_interval: 500ms

@@ -1,0 +1,1814 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vigilum Admin Panel</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --panel-bg: rgba(17, 24, 39, 0.7);
+            --panel-border: rgba(255, 255, 255, 0.08);
+            --text-color: #f3f4f6;
+            --text-muted: #9ca3af;
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --card-bg: rgba(31, 41, 55, 0.4);
+            --accent: #3b82f6;
+            --accent-glow: rgba(59, 130, 246, 0.15);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Outfit', sans-serif;
+            scrollbar-width: thin;
+            scrollbar-color: var(--panel-border) transparent;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.1) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(59, 130, 246, 0.1) 0px, transparent 50%);
+            background-attachment: fixed;
+        }
+
+        header {
+            background: rgba(11, 15, 25, 0.8);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--panel-border);
+            padding: 1.25rem 2rem;
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo-container {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .logo-icon {
+            font-size: 1.8rem;
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-weight: 700;
+        }
+
+        .logo-title {
+            font-size: 1.4rem;
+            font-weight: 600;
+            letter-spacing: -0.025em;
+        }
+
+        .logo-badge {
+            background: rgba(99, 102, 241, 0.15);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            color: #818cf8;
+            font-size: 0.75rem;
+            padding: 0.2rem 0.5rem;
+            border-radius: 9999px;
+            font-weight: 500;
+        }
+
+        .main-container {
+            max-width: 1200px;
+            width: 100%;
+            margin: 2rem auto;
+            padding: 0 1.5rem;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+        }
+
+        /* Notifications templates section */
+        .glass-panel {
+            background: var(--panel-bg);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--panel-border);
+            border-radius: 16px;
+            padding: 1.75rem;
+            box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+        }
+
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            border-bottom: 1px solid var(--panel-border);
+            padding-bottom: 0.75rem;
+        }
+
+        .panel-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .grid-templates {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 1.25rem;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .form-group label {
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .input-control {
+            background: rgba(17, 24, 39, 0.8);
+            border: 1px solid var(--panel-border);
+            border-radius: 8px;
+            color: var(--text-color);
+            padding: 0.75rem 1rem;
+            font-size: 0.9rem;
+            transition: all 0.2s ease;
+            width: 100%;
+        }
+
+        .input-control:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+        }
+
+        .input-control:disabled {
+            background: rgba(17, 24, 39, 0.4);
+            color: var(--text-muted);
+            cursor: not-allowed;
+        }
+
+        /* Actions buttons */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: none;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-hover);
+            box-shadow: 0 0 15px rgba(99, 102, 241, 0.4);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--text-color);
+            border: 1px solid var(--panel-border);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        .btn-danger {
+            background: rgba(239, 68, 68, 0.15);
+            color: #f87171;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .btn-danger:hover {
+            background: var(--danger);
+            color: white;
+        }
+
+        .btn-success {
+            background: var(--success);
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #059669;
+            box-shadow: 0 0 15px rgba(16, 185, 129, 0.4);
+        }
+
+        .btn-icon {
+            padding: 0.5rem;
+            border-radius: 6px;
+        }
+
+        /* Service Cards Section */
+        .services-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .services-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .service-card {
+            background: var(--panel-bg);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--panel-border);
+            border-radius: 16px;
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .service-card:hover {
+            transform: translateY(-4px);
+            border-color: rgba(99, 102, 241, 0.3);
+            box-shadow: 0 12px 30px -10px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(99, 102, 241, 0.1);
+        }
+
+        .service-card.disabled {
+            opacity: 0.65;
+        }
+
+        .service-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background: var(--accent);
+        }
+
+        .service-card.type-webadmin::before { background: #a855f7; }
+        .service-card.type-ping::before { background: #3b82f6; }
+        .service-card.type-http::before { background: #10b981; }
+        .service-card.type-https::before { background: #06b6d4; }
+        .service-card.type-tcp::before { background: #f59e0b; }
+        .service-card.type-udp::before { background: #ec4899; }
+
+        .card-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 1rem;
+        }
+
+        .service-info {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+            max-width: 70%;
+        }
+
+        .service-name {
+            font-size: 1.1rem;
+            font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .service-id {
+            font-family: monospace;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        /* Toggle switch styling */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 42px;
+            height: 24px;
+            flex-shrink: 0;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(255, 255, 255, 0.1);
+            transition: .3s;
+            border-radius: 34px;
+            border: 1px solid var(--panel-border);
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 16px;
+            width: 16px;
+            left: 3px;
+            bottom: 3px;
+            background-color: var(--text-color);
+            transition: .3s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: var(--success);
+        }
+
+        input:focus + .slider {
+            box-shadow: 0 0 1px var(--success);
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(18px);
+        }
+
+        .card-details {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            font-size: 0.85rem;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 0.75rem;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.03);
+        }
+
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 1rem;
+        }
+
+        .detail-label {
+            color: var(--text-muted);
+        }
+
+        .detail-value {
+            font-weight: 500;
+            word-break: break-all;
+            text-align: right;
+        }
+
+        .card-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 0.5rem;
+            margin-top: auto;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            padding-top: 0.75rem;
+        }
+
+        /* Modal windows */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(8px);
+            z-index: 100;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+
+        .modal-overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .modal-content {
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: 16px;
+            width: 100%;
+            max-width: 500px;
+            padding: 2rem;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.7);
+            transform: scale(0.95);
+            transition: transform 0.3s ease;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal-overlay.active .modal-content {
+            transform: scale(1);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            border-bottom: 1px solid var(--panel-border);
+            padding-bottom: 0.75rem;
+        }
+
+        .modal-title {
+            font-size: 1.3rem;
+            font-weight: 600;
+        }
+
+        .modal-form {
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem;
+        }
+
+        .modal-footer {
+            margin-top: 2rem;
+            display: flex;
+            justify-content: flex-end;
+            gap: 0.75rem;
+        }
+
+        /* Toast notifications */
+        .toast-container {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .toast {
+            background: rgba(17, 24, 39, 0.9);
+            border: 1px solid var(--panel-border);
+            color: var(--text-color);
+            padding: 1rem 1.5rem;
+            border-radius: 10px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            transform: translateY(100px);
+            opacity: 0;
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            backdrop-filter: blur(10px);
+        }
+
+        .toast.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+
+        .toast.success { border-left: 4px solid var(--success); }
+        .toast.error { border-left: 4px solid var(--danger); }
+        .toast.info { border-left: 4px solid var(--accent); }
+
+        .toast-icon {
+            font-size: 1.2rem;
+        }
+
+        .type-badge {
+            font-size: 0.75rem;
+            padding: 0.1rem 0.4rem;
+            border-radius: 4px;
+            text-transform: uppercase;
+            font-weight: 600;
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .type-webadmin .type-badge { color: #d8b4fe; background: rgba(168, 85, 247, 0.15); }
+        .type-ping .type-badge { color: #93c5fd; background: rgba(59, 130, 246, 0.15); }
+        .type-http .type-badge { color: #6ee7b7; background: rgba(16, 185, 129, 0.15); }
+        .type-https .type-badge { color: #67e8f9; background: rgba(6, 182, 212, 0.15); }
+        .type-tcp .type-badge { color: #fde047; background: rgba(245, 158, 11, 0.15); }
+        .type-udp .type-badge { color: #fbcfe8; background: rgba(236, 72, 153, 0.15); }
+
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(11, 15, 25, 0.7);
+            backdrop-filter: blur(4px);
+            z-index: 1000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: 500;
+            font-size: 1.2rem;
+            gap: 1rem;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease;
+        }
+
+        .loading-overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .spinner {
+            width: 24px;
+            height: 24px;
+            border: 3px solid rgba(255,255,255,0.1);
+            border-radius: 50%;
+            border-top-color: var(--primary);
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 4rem 2rem;
+            color: var(--text-muted);
+            grid-column: 1 / -1;
+            background: var(--panel-bg);
+            border: 1px dashed var(--panel-border);
+            border-radius: 16px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .empty-icon {
+            font-size: 3rem;
+            opacity: 0.5;
+        }
+
+        /* View toggle (Grid / Table) */
+        .view-toggle {
+            display: flex;
+            gap: 0.25rem;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--panel-border);
+            border-radius: 8px;
+            padding: 0.25rem;
+        }
+
+        .btn-view {
+            padding: 0.4rem 0.75rem;
+            border-radius: 6px;
+            border: none;
+            background: transparent;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+        }
+
+        .btn-view:hover {
+            color: var(--text-color);
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .btn-view.active {
+            background: var(--primary);
+            color: white;
+            box-shadow: 0 2px 8px rgba(99, 102, 241, 0.35);
+        }
+
+        /* Table view styles */
+        .services-table-wrapper {
+            overflow-x: auto;
+            border-radius: 12px;
+            border: 1px solid var(--panel-border);
+            background: var(--panel-bg);
+            backdrop-filter: blur(16px);
+            box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+        }
+
+        .services-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.88rem;
+        }
+
+        .services-table thead th {
+            background: rgba(0, 0, 0, 0.3);
+            color: var(--text-muted);
+            font-weight: 600;
+            font-size: 0.78rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            padding: 0.75rem 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--panel-border);
+            white-space: nowrap;
+        }
+
+        .services-table tbody tr {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            transition: background 0.15s ease;
+        }
+
+        .services-table tbody tr:last-child {
+            border-bottom: none;
+        }
+
+        .services-table tbody tr:hover {
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .services-table tbody tr.row-disabled {
+            opacity: 0.55;
+        }
+
+        .services-table td {
+            padding: 0.75rem 1rem;
+            vertical-align: middle;
+        }
+
+        .td-actions {
+            display: flex;
+            gap: 0.4rem;
+            justify-content: flex-end;
+        }
+
+        /* Pulsating Save button when there are unsaved local changes */
+        @keyframes pulse-save {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7); }
+            50%       { box-shadow: 0 0 0 10px rgba(245, 158, 11, 0); }
+        }
+
+        .btn-save-dirty {
+            background: var(--warning) !important;
+            animation: pulse-save 1.8s ease-in-out infinite;
+        }
+
+        .btn-save-dirty:hover {
+            background: #d97706 !important;
+            animation: none;
+        }
+
+        /* Alert Templates spoiler (details/summary) */
+
+        .details-panel > summary {
+            list-style: none;              /* hide default marker */
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            user-select: none;
+        }
+
+        /* Remove WebKit's own disclosure triangle */
+        .details-panel > summary::-webkit-details-marker { display: none; }
+
+        /* When open: add bottom border to separate summary from content */
+        .details-panel[open] > summary {
+            padding-bottom: 0.75rem;
+            border-bottom: 1px solid var(--panel-border);
+            margin-bottom: 1.5rem;
+        }
+
+        .details-arrow {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            transition: transform 0.3s ease;
+            margin-left: 0.5rem;
+        }
+
+        .details-panel[open] .details-arrow {
+            transform: rotate(180deg);
+        }
+
+        .details-hint {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            opacity: 0;
+            transition: opacity 0.2s ease;
+        }
+
+        /* Show hint only when collapsed */
+        .details-panel:not([open]) .details-hint { opacity: 1; }
+
+        /* Filter bar for services */
+        .filter-bar {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .filter-input {
+            flex: 1;
+            background: var(--panel-bg);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--panel-border);
+            border-radius: 10px;
+            color: var(--text-color);
+            padding: 0.65rem 1rem 0.65rem 2.5rem;
+            font-size: 0.9rem;
+            font-family: 'Outfit', sans-serif;
+            transition: all 0.2s ease;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: 0.75rem center;
+        }
+
+        .filter-input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+        }
+
+        .filter-input::placeholder { color: var(--text-muted); }
+
+        .filter-count {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            white-space: nowrap;
+            min-width: 55px;
+            text-align: right;
+        }
+
+        .btn-clear-filter {
+            padding: 0.5rem 0.85rem;
+            border-radius: 8px;
+            border: 1px solid var(--panel-border);
+            background: rgba(255,255,255,0.06);
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: none;  /* shown by JS when filter is active */
+        }
+
+        .btn-clear-filter:hover {
+            background: rgba(255,255,255,0.12);
+            color: var(--text-color);
+        }
+
+        /* Footer Styles */
+        .admin-footer {
+            margin-top: 4rem;
+            padding: 2rem 0 1rem 0;
+            border-top: 1px solid var(--panel-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .footer-info {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        .footer-actions {
+            display: flex;
+            gap: 0.75rem;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        /* Login Screen Overlay */
+        .login-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: radial-gradient(circle at center, rgba(31, 41, 55, 0.97) 0%, rgba(17, 24, 39, 1) 100%);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            backdrop-filter: blur(8px);
+        }
+
+        .login-overlay.active {
+            display: flex;
+        }
+
+        .login-box {
+            width: 100%;
+            max-width: 400px;
+            padding: 2.5rem;
+            border-radius: 16px;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.4), 0 10px 10px -5px rgba(0, 0, 0, 0.2);
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        .login-logo {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.75rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .login-subtitle {
+            text-align: center;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-bottom: 2rem;
+        }
+
+        .login-error {
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #f87171;
+            padding: 0.75rem;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            margin-top: 0.75rem;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="logo-container">
+            <span class="logo-icon">V</span>
+            <h1 class="logo-title">Vigilum Admin</h1>
+            <span class="logo-badge">v1.0.0</span>
+        </div>
+        <button class="btn btn-success" id="btn-save-all" onclick="saveAllConfig()">
+            Save Configuration
+        </button>
+    </header>
+
+    <div class="main-container">
+        <!-- Templates Panel — collapsed by default (details/summary spoiler) -->
+        <details class="glass-panel details-panel" id="templates-details">
+            <summary class="panel-header" style="margin-bottom:0; border-bottom:none; padding-bottom:0;">
+                <div style="display:flex; align-items:center; gap:0.75rem;">
+                    <h2 class="panel-title" style="margin:0">
+                        <span>🔔</span> Alert Templates
+                    </h2>
+                    <!-- Shown only when section is collapsed, as a hint -->
+                    <span class="details-hint">click to expand</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:1rem;">
+                    <span style="font-size: 0.8rem; color: var(--text-muted)">
+                        Available tags: {name}, {error}
+                    </span>
+                    <span class="details-arrow">▼</span>
+                </div>
+            </summary>
+            <div class="grid-templates">
+                <div class="form-group">
+                    <label for="tpl-down">🔴 Down (Failure)</label>
+                    <!-- oninput: mark unsaved changes immediately when template text changes -->
+                    <input type="text" id="tpl-down" class="input-control" oninput="markDirty()" placeholder="🔴 Service {name} is down! Error: {error}">
+                </div>
+                <div class="form-group">
+                    <label for="tpl-up">🟢 Up (Recovered)</label>
+                    <input type="text" id="tpl-up" class="input-control" oninput="markDirty()" placeholder="🟢 Service {name} is recovered">
+                </div>
+                <div class="form-group">
+                    <label for="tpl-enabled">🔵 Enabled (Monitoring On)</label>
+                    <input type="text" id="tpl-enabled" class="input-control" oninput="markDirty()" placeholder="🔵 Monitoring enabled for service {name}">
+                </div>
+                <div class="form-group">
+                    <label for="tpl-disabled">🟡 Disabled (Monitoring Off)</label>
+                    <input type="text" id="tpl-disabled" class="input-control" oninput="markDirty()" placeholder="🟡 Monitoring disabled for service {name}">
+                </div>
+                <div class="form-group">
+                    <label for="tpl-webadmin-enabled">🔵 Webadmin Autostart Enabled</label>
+                    <input type="text" id="tpl-webadmin-enabled" class="input-control" oninput="markDirty()" placeholder="🔵 Autostart enabled for Webadmin service {name}">
+                </div>
+                <div class="form-group">
+                    <label for="tpl-webadmin-disabled">🟡 Webadmin Autostart Disabled</label>
+                    <input type="text" id="tpl-webadmin-disabled" class="input-control" oninput="markDirty()" placeholder="🟡 Autostart disabled for Webadmin service {name}">
+                </div>
+            </div>
+        </details>
+
+        <!-- Services Section -->
+        <section style="display: flex; flex-direction: column; gap: 1.25rem;">
+            <div class="services-header">
+                <h2 class="panel-title">🖥️ Monitored Services</h2>
+                <div style="display:flex; align-items:center; gap:1rem;">
+                    <!-- View mode toggle: Grid (cards) or Table (compact rows) -->
+                    <div class="view-toggle">
+                        <button id="btn-view-grid" class="btn-view active" onclick="setViewMode('grid')" title="Grid view">
+                            ⊞ Grid
+                        </button>
+                        <button id="btn-view-table" class="btn-view" onclick="setViewMode('table')" title="Table view">
+                            ≡ Table
+                        </button>
+                    </div>
+                    <button class="btn btn-primary" onclick="openAddModal()">
+                        <span>➕</span> Add Service
+                    </button>
+                </div>
+            </div>
+
+            <!-- Live filter bar: search by name, id, type or target -->
+            <div class="filter-bar">
+                <input
+                    type="search"
+                    id="filter-input"
+                    class="filter-input"
+                    placeholder="Filter by name, ID, type or target…"
+                    oninput="applyFilter(this.value)"
+                    autocomplete="off"
+                    style="flex: 1;"
+                >
+                <span id="filter-count" class="filter-count"></span>
+                <button id="btn-clear-filter" class="btn-clear-filter" onclick="clearFilter()" title="Clear filter">✕ Clear</button>
+                
+                <div style="display: flex; align-items: center; gap: 0.5rem; margin-left: 0.5rem;">
+                    <label for="sort-select" style="font-size: 0.85rem; color: var(--text-muted); white-space: nowrap;">Sort by:</label>
+                    <select id="sort-select" class="input-control" onchange="applySort(this.value)" style="padding: 0.45rem 1.5rem 0.45rem 0.75rem; font-size: 0.85rem; border-radius: 8px; width: auto; background-position: right 0.5rem center;">
+                        <option value="default">Default</option>
+                        <option value="name-asc">Name (A-Z)</option>
+                        <option value="name-desc">Name (Z-A)</option>
+                        <option value="id-asc">ID (A-Z)</option>
+                        <option value="type-asc">Type (A-Z)</option>
+                        <option value="status-on">Enabled first</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="services-grid" id="services-container">
+                <!-- Cards injected by JS -->
+            </div>
+        </section>
+
+        <!-- Footer / Backup section -->
+        <footer class="admin-footer">
+            <div class="footer-info">
+                <span>Vigilum Panel &copy; 2026</span>
+            </div>
+            <div class="footer-actions">
+                <button class="btn btn-secondary" onclick="exportConfig()" title="Скачать конфигурацию">
+                    📥 Backup Config
+                </button>
+                <button class="btn btn-secondary" onclick="triggerImportConfig()" title="Восстановить конфигурацию из файла">
+                    📤 Restore Config
+                </button>
+                <input type="file" id="import-file-input" style="display: none;" accept=".yaml,.yml" onchange="importConfig(event)">
+                <button class="btn btn-danger" onclick="performLogout()" title="Выйти из системы">
+                    🚪 Logout
+                </button>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Login Screen Overlay -->
+    <div class="login-overlay" id="login-overlay">
+        <div class="login-box glass-panel">
+            <div class="login-logo">
+                <span class="logo-icon">V</span>
+                <h2 style="margin:0; font-family:'Outfit', sans-serif; font-weight:600;">Vigilum Admin</h2>
+            </div>
+            <p class="login-subtitle">Введите учетные данные для доступа к панели</p>
+            <form id="login-form" onsubmit="performLogin(event)">
+                <div class="form-group">
+                    <label for="login-username">Имя пользователя</label>
+                    <input type="text" id="login-username" class="input-control" required placeholder="Имя пользователя">
+                </div>
+                <div class="form-group">
+                    <label for="login-password">Пароль</label>
+                    <input type="password" id="login-password" class="input-control" required placeholder="Пароль">
+                </div>
+                <div id="login-error" class="login-error" style="display: none;"></div>
+                <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 1rem; padding: 0.75rem;">Войти</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add/Edit Modal -->
+    <div class="modal-overlay" id="service-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title" id="modal-title">Add New Service</h3>
+                <button class="btn btn-secondary btn-icon" onclick="closeModal()" style="padding: 0.25rem 0.5rem">✕</button>
+            </div>
+            <form class="modal-form" id="service-form" onsubmit="handleFormSubmit(event)">
+                <input type="hidden" id="form-mode" value="add">
+                
+                <div class="form-group">
+                    <label for="svc-id">Service ID * (uniquely defines service)</label>
+                    <input type="text" id="svc-id" class="input-control" required placeholder="e.g. google-dns">
+                </div>
+
+                <div class="form-group">
+                    <label for="svc-name">Service Name * (used in alerts)</label>
+                    <input type="text" id="svc-name" class="input-control" required placeholder="e.g. Google Public DNS">
+                </div>
+
+                <div class="form-group">
+                    <label for="svc-type">Check Type *</label>
+                    <select id="svc-type" class="input-control" required onchange="toggleTypeFields()">
+                        <option value="ping">Ping (ICMP)</option>
+                        <option value="http">HTTP (GET)</option>
+                        <option value="https">HTTPS (GET)</option>
+                        <option value="tcp">TCP Connection</option>
+                        <option value="udp">UDP Probe / DNS</option>
+                        <option value="webadmin">Webadmin Panel (X-UI)</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="svc-target" id="lbl-target">Target *</label>
+                    <input type="text" id="svc-target" class="input-control" required placeholder="e.g. 8.8.8.8">
+                </div>
+
+                <div class="form-group" style="flex-direction: row; align-items: center; justify-content: space-between;">
+                    <label for="svc-enabled">Enable Monitoring</label>
+                    <label class="switch">
+                        <input type="checkbox" id="svc-enabled" checked>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+
+                <div class="grid-templates">
+                    <div class="form-group">
+                        <label for="svc-retries">Retries count (optional)</label>
+                        <input type="number" id="svc-retries" class="input-control" min="0" placeholder="Default">
+                    </div>
+                    <div class="form-group">
+                        <label for="svc-retry-interval">Retry pause (e.g. 2s, 500ms)</label>
+                        <input type="text" id="svc-retry-interval" class="input-control" placeholder="Default">
+                    </div>
+                </div>
+
+                <!-- Webadmin specific fields -->
+                <div id="webadmin-fields" style="display: none; border-top: 1px solid var(--panel-border); padding-top: 1.25rem;" class="modal-form">
+                    <div class="form-group">
+                        <label for="svc-username">Webadmin Username *</label>
+                        <input type="text" id="svc-username" class="input-control" placeholder="Admin panel login">
+                    </div>
+                    <div class="form-group">
+                        <label for="svc-password">Webadmin Password *</label>
+                        <input type="password" id="svc-password" class="input-control" placeholder="Admin panel password">
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="btn-submit">Add Service</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Toast notifications -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <!-- Global loading overlay -->
+    <div class="loading-overlay" id="loading-overlay">
+        <div class="spinner"></div>
+        <span>Saving changes...</span>
+    </div>
+
+    <script>
+        let currentConfig = {
+            templates: { down: "", up: "", enabled: "", disabled: "" },
+            services: []
+        };
+        // View mode: 'grid' (cards) or 'table' (compact rows); persisted in localStorage
+        let viewMode = localStorage.getItem('viewMode') || 'grid';
+        // Сортировка: 'default', 'name-asc', 'name-desc', 'id-asc', 'type-asc', 'status-on'; сохраняется в localStorage
+        let sortMode = localStorage.getItem('sortMode') || 'default';
+        // Tracks whether there are unsaved local changes (add/edit/delete or template edits)
+        let isDirty = false;
+        // Current text filter for services list (empty = show all)
+        let filterQuery = '';
+
+        // On Page Load
+        document.addEventListener("DOMContentLoaded", () => {
+            // Restore view mode preference from localStorage and sync toggle buttons
+            setViewMode(viewMode);
+            // Восстанавливаем выбранный режим сортировки в выпадающем списке
+            document.getElementById('sort-select').value = sortMode;
+            fetchConfig();
+        });
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            
+            let icon = 'ℹ️';
+            if (type === 'success') icon = '✅';
+            if (type === 'error') icon = '❌';
+
+            toast.innerHTML = `<span class="toast-icon">${icon}</span><span>${message}</span>`;
+            container.appendChild(toast);
+            
+            // Trigger animation
+            setTimeout(() => toast.classList.add('show'), 10);
+            
+            // Remove after 4s
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => toast.remove(), 300);
+            }, 4000);
+        }
+
+        function toggleLoading(active) {
+            document.getElementById('loading-overlay').className = `loading-overlay ${active ? 'active' : ''}`;
+        }
+
+        function showLoginScreen() {
+            document.getElementById('login-overlay').classList.add('active');
+            document.getElementById('login-error').style.display = 'none';
+        }
+
+        function hideLoginScreen() {
+            document.getElementById('login-overlay').classList.remove('active');
+        }
+
+        async function performLogin(event) {
+            event.preventDefault();
+            const usernameInput = document.getElementById('login-username');
+            const passwordInput = document.getElementById('login-password');
+            const errorEl = document.getElementById('login-error');
+            
+            const username = usernameInput.value.trim();
+            const password = passwordInput.value;
+
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+
+                if (response.status === 401) {
+                    throw new Error('Неверное имя пользователя или пароль');
+                }
+                if (!response.ok) {
+                    throw new Error('Ошибка подключения к серверу');
+                }
+
+                passwordInput.value = '';
+                errorEl.style.display = 'none';
+                hideLoginScreen();
+                showToast('Вход успешно выполнен!', 'success');
+                fetchConfig();
+            } catch (err) {
+                errorEl.textContent = err.message;
+                errorEl.style.display = 'block';
+            }
+        }
+
+        async function performLogout() {
+            if (!confirm('Вы уверены, что хотите выйти из системы?')) return;
+            try {
+                const response = await fetch('/api/auth/logout', { method: 'POST' });
+                if (response.ok) {
+                    showToast('Вы вышли из системы', 'info');
+                    showLoginScreen();
+                } else {
+                    throw new Error('Ошибка при выходе');
+                }
+            } catch (err) {
+                showToast(err.message, 'error');
+            }
+        }
+
+        async function exportConfig() {
+            try {
+                const response = await fetch('/api/config/export');
+                if (response.status === 401) {
+                    showLoginScreen();
+                    return;
+                }
+                if (!response.ok) throw new Error('Не удалось скачать конфигурацию');
+                
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'config.yaml';
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(url);
+                showToast('Конфигурация успешно экспортирована', 'success');
+            } catch (err) {
+                showToast(err.message, 'error');
+            }
+        }
+
+        function triggerImportConfig() {
+            document.getElementById('import-file-input').click();
+        }
+
+        async function importConfig(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            if (!confirm('Вы уверены, что хотите восстановить конфигурацию из файла? Текущие настройки будут перезаписаны.')) {
+                event.target.value = '';
+                return;
+            }
+
+            toggleLoading(true);
+            const formData = new FormData();
+            formData.append('config', file);
+
+            try {
+                const response = await fetch('/api/config/import', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.status === 401) {
+                    showLoginScreen();
+                    return;
+                }
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`Ошибка импорта: ${errorText}`);
+                }
+
+                showToast('Конфигурация успешно восстановлена из файла!', 'success');
+                markClean();
+                await fetchConfig();
+            } catch (err) {
+                showToast(err.message, 'error');
+            } finally {
+                toggleLoading(false);
+                event.target.value = '';
+            }
+        }
+
+        // Fetch config from API
+        async function fetchConfig() {
+            try {
+                const response = await fetch('/api/config');
+                if (response.status === 401) {
+                    showLoginScreen();
+                    return;
+                }
+                if (!response.ok) throw new Error('Failed to load configuration');
+                
+                hideLoginScreen();
+                currentConfig = await response.json();
+                
+                // Set templates
+                document.getElementById('tpl-down').value = currentConfig.templates.down || "";
+                document.getElementById('tpl-up').value = currentConfig.templates.up || "";
+                document.getElementById('tpl-enabled').value = currentConfig.templates.enabled || "";
+                document.getElementById('tpl-disabled').value = currentConfig.templates.disabled || "";
+                document.getElementById('tpl-webadmin-enabled').value = currentConfig.templates.webadmin_enabled || "";
+                document.getElementById('tpl-webadmin-disabled').value = currentConfig.templates.webadmin_disabled || "";
+
+                renderServices();
+            } catch (err) {
+                showToast(err.message, 'error');
+            }
+        }
+
+        // Render services — applies filter, then dispatches to grid or table view
+        function renderServices() {
+            const container = document.getElementById('services-container');
+            container.innerHTML = '';
+
+            // Compute filtered list
+            const allServices = currentConfig.services || [];
+            let services = filterServices(allServices);
+
+            // Apply sorting
+            services = sortServices(services);
+
+            // Update count badge and Clear button visibility
+            const countEl = document.getElementById('filter-count');
+            const clearBtn = document.getElementById('btn-clear-filter');
+            if (countEl) countEl.textContent = filterQuery ? `${services.length} / ${allServices.length}` : '';
+            if (clearBtn) clearBtn.style.display = filterQuery ? 'inline-flex' : 'none';
+
+            if (services.length === 0) {
+                container.className = 'services-grid';
+                if (!filterQuery && allServices.length === 0) {
+                    // No services configured at all
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <span class="empty-icon">📂</span>
+                            <p>No services configured yet.</p>
+                            <button class="btn btn-primary btn-secondary" onclick="openAddModal()">Add first service</button>
+                        </div>
+                    `;
+                } else {
+                    // Filter returned no matches
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <span class="empty-icon">🔍</span>
+                            <p>No services match <strong style="color:var(--text-color)">&ldquo;${filterQuery}&rdquo;</strong>.</p>
+                            <button class="btn btn-secondary" onclick="clearFilter()">Clear filter</button>
+                        </div>
+                    `;
+                }
+                return;
+            }
+
+            if (viewMode === 'table') {
+                // Table view: remove grid class, inject compact table
+                container.className = '';
+                renderServicesTable(container, services);
+            } else {
+                // Grid view: restore grid class, inject cards
+                container.className = 'services-grid';
+                renderServicesGrid(container, services);
+            }
+        }
+
+        // Render services as cards (grid view); receives pre-filtered list
+        function renderServicesGrid(container, services) {
+            services.forEach(svc => {
+                const card = document.createElement('div');
+                card.className = `service-card type-${svc.type} ${svc.enabled ? '' : 'disabled'}`;
+                
+                let detailsHtml = `
+                    <div class="detail-row">
+                        <span class="detail-label">Target:</span>
+                        <span class="detail-value">${svc.target}</span>
+                    </div>
+                `;
+
+                if (svc.retries !== null && svc.retries !== undefined) {
+                    detailsHtml += `
+                        <div class="detail-row">
+                            <span class="detail-label">Retries:</span>
+                            <span class="detail-value">${svc.retries}</span>
+                        </div>
+                    `;
+                }
+                if (svc.retry_interval) {
+                    detailsHtml += `
+                        <div class="detail-row">
+                            <span class="detail-label">Retry Interval:</span>
+                            <span class="detail-value">${svc.retry_interval}</span>
+                        </div>
+                    `;
+                }
+                if (svc.type === 'webadmin') {
+                    detailsHtml += `
+                        <div class="detail-row">
+                            <span class="detail-label">Username:</span>
+                            <span class="detail-value">${svc.username}</span>
+                        </div>
+                    `;
+                }
+
+                card.innerHTML = `
+                    <div class="card-top">
+                        <div class="service-info">
+                            <h3 class="service-name" title="${svc.name}">${svc.name}</h3>
+                            <span class="service-id">${svc.id}</span>
+                            <div style="margin-top: 0.25rem;">
+                                <span class="type-badge">${svc.type}</span>
+                            </div>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" ${svc.enabled ? 'checked' : ''} onchange="toggleServiceEnabled('${svc.id}', this.checked)">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="card-details">
+                        ${detailsHtml}
+                    </div>
+                    <div class="card-actions">
+                        <button class="btn btn-secondary btn-icon" onclick="openEditModal('${svc.id}')" title="Edit service">✏️</button>
+                        <button class="btn btn-secondary btn-icon" onclick="copyService('${svc.id}')" title="Copy service">📋</button>
+                        <button class="btn btn-danger btn-icon" onclick="deleteService('${svc.id}')" title="Delete service">🗑️</button>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        // Render services as a compact table (table view); receives pre-filtered list
+        function renderServicesTable(container, services) {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'services-table-wrapper';
+
+            let rows = '';
+            services.forEach(svc => {
+                // Put type class on <tr> so CSS ancestor selectors for .type-badge still work
+                rows += `
+                    <tr class="type-${svc.type} ${svc.enabled ? '' : 'row-disabled'}">
+                        <td>
+                            <label class="switch">
+                                <input type="checkbox" ${svc.enabled ? 'checked' : ''} onchange="toggleServiceEnabled('${svc.id}', this.checked)">
+                                <span class="slider"></span>
+                            </label>
+                        </td>
+                        <td><span style="font-weight:600">${svc.name}</span></td>
+                        <td><span class="service-id">${svc.id}</span></td>
+                        <td><span class="type-badge">${svc.type}</span></td>
+                        <td style="max-width:320px; word-break:break-all">${svc.target}</td>
+                        <td style="text-align:center">${(svc.retries !== null && svc.retries !== undefined) ? svc.retries : '—'}</td>
+                        <td>${svc.retry_interval || '—'}</td>
+                        <td>
+                            <div class="td-actions">
+                                <button class="btn btn-secondary btn-icon" onclick="openEditModal('${svc.id}')" title="Edit service">✏️</button>
+                                <button class="btn btn-secondary btn-icon" onclick="copyService('${svc.id}')" title="Copy service">📋</button>
+                                <button class="btn btn-danger btn-icon" onclick="deleteService('${svc.id}')" title="Delete service">🗑️</button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            });
+
+            wrapper.innerHTML = `
+                <table class="services-table">
+                    <thead>
+                        <tr>
+                            <th>On</th>
+                            <th>Name</th>
+                            <th>ID</th>
+                            <th>Type</th>
+                            <th>Target</th>
+                            <th>Retries</th>
+                            <th>Retry Interval</th>
+                            <th style="text-align:right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            `;
+            container.appendChild(wrapper);
+        }
+
+        // Toggle service enabled state via fast API
+        async function toggleServiceEnabled(id, enabled) {
+            try {
+                const response = await fetch('/api/services/toggle', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id, enabled })
+                });
+
+                if (response.status === 401) {
+                    showLoginScreen();
+                    return;
+                }
+                if (!response.ok) throw new Error('Failed to update service status');
+                
+                // Update local config
+                const svc = currentConfig.services.find(s => s.id === id);
+                if (svc) {
+                    svc.enabled = enabled;
+                }
+                
+                // Re-render cards (retains state)
+                renderServices();
+                showToast(`Service "${id}" ${enabled ? 'enabled' : 'disabled'}`, 'success');
+            } catch (err) {
+                showToast(err.message, 'error');
+                fetchConfig(); // Revert UI check state
+            }
+        }
+
+        // Add / Edit Modal Actions
+        function openAddModal() {
+            document.getElementById('form-mode').value = 'add';
+            document.getElementById('modal-title').textContent = 'Add New Service';
+            document.getElementById('btn-submit').textContent = 'Add Service';
+            
+            document.getElementById('svc-id').disabled = false;
+            document.getElementById('svc-id').value = '';
+            document.getElementById('svc-name').value = '';
+            document.getElementById('svc-type').value = 'ping';
+            document.getElementById('svc-target').value = '';
+            document.getElementById('svc-enabled').checked = true;
+            document.getElementById('svc-retries').value = '';
+            document.getElementById('svc-retry-interval').value = '';
+            document.getElementById('svc-username').value = '';
+            document.getElementById('svc-password').value = '';
+
+            toggleTypeFields();
+            document.getElementById('service-modal').classList.add('active');
+        }
+
+        function openEditModal(id) {
+            const svc = currentConfig.services.find(s => s.id === id);
+            if (!svc) return;
+
+            document.getElementById('form-mode').value = 'edit';
+            document.getElementById('modal-title').textContent = 'Edit Service';
+            document.getElementById('btn-submit').textContent = 'Save Changes';
+            
+            document.getElementById('svc-id').value = svc.id;
+            document.getElementById('svc-id').disabled = true; // Cannot edit ID
+            document.getElementById('svc-name').value = svc.name;
+            document.getElementById('svc-type').value = svc.type;
+            document.getElementById('svc-target').value = svc.target;
+            document.getElementById('svc-enabled').checked = svc.enabled;
+            document.getElementById('svc-retries').value = svc.retries !== null ? svc.retries : '';
+            document.getElementById('svc-retry-interval').value = svc.retry_interval || '';
+            document.getElementById('svc-username').value = svc.username || '';
+            document.getElementById('svc-password').value = svc.password || '';
+
+            toggleTypeFields();
+            document.getElementById('service-modal').classList.add('active');
+        }
+
+        function closeModal() {
+            document.getElementById('service-modal').classList.remove('active');
+        }
+
+        function toggleTypeFields() {
+            const type = document.getElementById('svc-type').value;
+            const targetInput = document.getElementById('svc-target');
+            const targetLabel = document.getElementById('lbl-target');
+            const webadminFields = document.getElementById('webadmin-fields');
+
+            // Change placeholder and label depending on type
+            if (type === 'http' || type === 'https' || type === 'webadmin') {
+                targetLabel.textContent = 'Target URL *';
+                targetInput.placeholder = 'e.g. http://192.168.1.100:8080';
+            } else if (type === 'tcp' || type === 'udp') {
+                targetLabel.textContent = 'Target Address (Host:Port) *';
+                targetInput.placeholder = 'e.g. 192.168.1.10:53';
+            } else {
+                targetLabel.textContent = 'Target Host/IP *';
+                targetInput.placeholder = 'e.g. 8.8.8.8';
+            }
+
+            // Webadmin fields visibility
+            if (type === 'webadmin') {
+                webadminFields.style.display = 'flex';
+                document.getElementById('svc-username').required = true;
+                document.getElementById('svc-password').required = true;
+            } else {
+                webadminFields.style.display = 'none';
+                document.getElementById('svc-username').required = false;
+                document.getElementById('svc-password').required = false;
+            }
+        }
+
+        // Form Submission (Add or Edit)
+        function handleFormSubmit(event) {
+            event.preventDefault();
+            
+            const mode = document.getElementById('form-mode').value;
+            const id = document.getElementById('svc-id').value.trim();
+            const name = document.getElementById('svc-name').value.trim();
+            const type = document.getElementById('svc-type').value;
+            const target = document.getElementById('svc-target').value.trim();
+            const enabled = document.getElementById('svc-enabled').checked;
+            
+            const retriesInput = document.getElementById('svc-retries').value;
+            const retries = retriesInput !== '' ? parseInt(retriesInput, 10) : null;
+            const retry_interval = document.getElementById('svc-retry-interval').value.trim();
+            
+            const username = document.getElementById('svc-username').value.trim();
+            const password = document.getElementById('svc-password').value.trim();
+
+            // Validate service ID unique for add
+            if (mode === 'add') {
+                const exists = currentConfig.services.some(s => s.id === id);
+                if (exists) {
+                    showToast(`Service ID "${id}" is already in use`, 'error');
+                    return;
+                }
+            }
+
+            const serviceData = {
+                id, name, type, target, enabled,
+                retries,
+                retry_interval: retry_interval || undefined,
+                username: type === 'webadmin' ? username : undefined,
+                password: type === 'webadmin' ? password : undefined
+            };
+
+            if (mode === 'add') {
+                if (!currentConfig.services) currentConfig.services = [];
+                currentConfig.services.push(serviceData);
+                showToast(`Service "${id}" added locally. Click "Save Configuration" to apply.`, 'info');
+            } else {
+                const idx = currentConfig.services.findIndex(s => s.id === id);
+                if (idx !== -1) {
+                    currentConfig.services[idx] = serviceData;
+                    showToast(`Service "${id}" updated locally. Click "Save Configuration" to apply.`, 'info');
+                }
+            }
+
+            // Mark dirty BEFORE closing modal — user will see pulsating Save button
+            markDirty();
+            closeModal();
+            renderServices();
+        }
+
+        // Копирование существующего сервиса (открывает модальное окно добавления с заполненными полями)
+        function copyService(id) {
+            const svc = currentConfig.services.find(s => s.id === id);
+            if (!svc) return;
+
+            document.getElementById('form-mode').value = 'add';
+            document.getElementById('modal-title').textContent = 'Copy Service';
+            document.getElementById('btn-submit').textContent = 'Add Service';
+
+            // Генерируем уникальный ID с суффиксом -copy
+            let newId = svc.id + '-copy';
+            let counter = 1;
+            while (currentConfig.services.some(s => s.id === newId)) {
+                newId = `${svc.id}-copy-${counter}`;
+                counter++;
+            }
+
+            document.getElementById('svc-id').disabled = false; // Должен быть доступен для редактирования
+            document.getElementById('svc-id').value = newId;
+            document.getElementById('svc-name').value = svc.name + '-copy';
+            document.getElementById('svc-type').value = svc.type;
+            document.getElementById('svc-target').value = svc.target;
+            document.getElementById('svc-enabled').checked = svc.enabled;
+            document.getElementById('svc-retries').value = svc.retries !== null && svc.retries !== undefined ? svc.retries : '';
+            document.getElementById('svc-retry-interval').value = svc.retry_interval || '';
+            document.getElementById('svc-username').value = svc.username || '';
+            document.getElementById('svc-password').value = svc.password || '';
+
+            toggleTypeFields();
+            document.getElementById('service-modal').classList.add('active');
+        }
+
+        // Delete Service
+        function deleteService(id) {
+            if (!confirm(`Are you sure you want to delete service "${id}"?`)) return;
+
+            currentConfig.services = currentConfig.services.filter(s => s.id !== id);
+            // Mark dirty: deletion is local until user clicks Save
+            markDirty();
+            renderServices();
+            showToast(`Service "${id}" deleted locally. Click "Save Configuration" to apply.`, 'info');
+        }
+
+        // Save All Configuration
+        async function saveAllConfig() {
+            toggleLoading(true);
+
+            // Read templates values
+            currentConfig.templates = {
+                down: document.getElementById('tpl-down').value.trim(),
+                up: document.getElementById('tpl-up').value.trim(),
+                enabled: document.getElementById('tpl-enabled').value.trim(),
+                disabled: document.getElementById('tpl-disabled').value.trim(),
+                webadmin_enabled: document.getElementById('tpl-webadmin-enabled').value.trim(),
+                webadmin_disabled: document.getElementById('tpl-webadmin-disabled').value.trim()
+            };
+
+            try {
+                const response = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(currentConfig)
+                });
+
+                if (response.status === 401) {
+                    showLoginScreen();
+                    return;
+                }
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`Failed to save: ${errorText}`);
+                }
+
+                showToast('Configuration successfully saved and applied!', 'success');
+                // Clear dirty indicator — config is now persisted to disk
+                markClean();
+            } catch (err) {
+                showToast(err.message, 'error');
+            } finally {
+                toggleLoading(false);
+                fetchConfig(); // Reload from server to verify
+            }
+        }
+
+        // Filter services array by query string (name, id, type, target)
+        function filterServices(services) {
+            if (!filterQuery) return services;
+            const q = filterQuery; // already lowercase-trimmed by applyFilter
+            return services.filter(svc =>
+                svc.name.toLowerCase().includes(q) ||
+                svc.id.toLowerCase().includes(q) ||
+                svc.type.toLowerCase().includes(q) ||
+                (svc.target && svc.target.toLowerCase().includes(q))
+            );
+        }
+
+        // Called by filter input oninput; updates state and re-renders
+        function applyFilter(value) {
+            filterQuery = value.trim().toLowerCase();
+            renderServices();
+        }
+
+        // Reset filter and re-render
+        function clearFilter() {
+            filterQuery = '';
+            const input = document.getElementById('filter-input');
+            if (input) input.value = '';
+            renderServices();
+        }
+
+        // Sort services array based on sortMode
+        function sortServices(services) {
+            const list = [...services];
+            if (sortMode === 'default') return list;
+
+            return list.sort((a, b) => {
+                switch (sortMode) {
+                    case 'name-asc':
+                        return a.name.localeCompare(b.name);
+                    case 'name-desc':
+                        return b.name.localeCompare(a.name);
+                    case 'id-asc':
+                        return a.id.localeCompare(b.id);
+                    case 'type-asc':
+                        return a.type.localeCompare(b.type);
+                    case 'status-on':
+                        const valA = a.enabled ? 1 : 0;
+                        const valB = b.enabled ? 1 : 0;
+                        return valB - valA;
+                    default:
+                        return 0;
+                }
+            });
+        }
+
+        // Called when sort select changes
+        function applySort(value) {
+            sortMode = value;
+            localStorage.setItem('sortMode', value);
+            renderServices();
+        }
+
+        // Switch display mode (grid or table), persist choice in localStorage
+        function setViewMode(mode) {
+            viewMode = mode;
+            localStorage.setItem('viewMode', mode);
+            // Sync toggle button active states
+            document.getElementById('btn-view-grid').classList.toggle('active', mode === 'grid');
+            document.getElementById('btn-view-table').classList.toggle('active', mode === 'table');
+            renderServices();
+        }
+
+        // Mark that local state differs from saved config (show pulsating Save button)
+        function markDirty() {
+            if (isDirty) return; // already dirty, skip DOM update
+            isDirty = true;
+            const btn = document.getElementById('btn-save-all');
+            btn.classList.add('btn-save-dirty');
+            btn.innerHTML = '⚠️ Save Configuration';
+        }
+
+        // Clear dirty indicator after a successful save to disk
+        function markClean() {
+            isDirty = false;
+            const btn = document.getElementById('btn-save-all');
+            btn.classList.remove('btn-save-dirty');
+            btn.innerHTML = 'Save Configuration';
+        }
+    </script>
+</body>
+</html>
