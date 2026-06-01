@@ -327,6 +327,7 @@
             transition: all 0.3s ease;
             position: relative;
             vertical-align: middle;
+            flex-shrink: 0;
         }
 
         .status-online {
@@ -552,6 +553,25 @@
             text-transform: uppercase;
             font-weight: 600;
             background: rgba(255, 255, 255, 0.1);
+        }
+
+        .badge-enabled {
+            color: #34d399; /* Изумрудно-зеленый */
+            background: rgba(52, 211, 153, 0.15);
+        }
+
+        .badge-disabled {
+            color: #9ca3af; /* Благородный серый */
+            background: rgba(156, 163, 175, 0.15);
+        }
+
+        .badge-blink {
+            animation: badge-pulse 1.5s infinite ease-in-out;
+        }
+
+        @keyframes badge-pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.35; }
         }
 
         .type-webadmin .type-badge { color: #d8b4fe; background: rgba(168, 85, 247, 0.15); }
@@ -909,7 +929,7 @@
         <div class="logo-container">
             <span class="logo-icon">V</span>
             <h1 class="logo-title">Vigilum Admin</h1>
-            <span class="logo-badge">v1.1.0</span>
+            <span class="logo-badge">v1.2.0</span>
         </div>
         <button class="btn btn-success" id="btn-save-all" onclick="saveAllConfig()">
             Save Configuration
@@ -917,51 +937,7 @@
     </header>
 
     <div class="main-container">
-        <!-- Templates Panel — collapsed by default (details/summary spoiler) -->
-        <details class="glass-panel details-panel" id="templates-details">
-            <summary class="panel-header" style="margin-bottom:0; border-bottom:none; padding-bottom:0;">
-                <div style="display:flex; align-items:center; gap:0.75rem;">
-                    <h2 class="panel-title" style="margin:0">
-                        <span>🔔</span> Alert Templates
-                    </h2>
-                    <!-- Shown only when section is collapsed, as a hint -->
-                    <span class="details-hint">click to expand</span>
-                </div>
-                <div style="display:flex; align-items:center; gap:1rem;">
-                    <span style="font-size: 0.8rem; color: var(--text-muted)">
-                        Available tags: {name}, {error}
-                    </span>
-                    <span class="details-arrow">▼</span>
-                </div>
-            </summary>
-            <div class="grid-templates">
-                <div class="form-group">
-                    <label for="tpl-down">🔴 Down (Failure)</label>
-                    <!-- oninput: mark unsaved changes immediately when template text changes -->
-                    <input type="text" id="tpl-down" class="input-control" oninput="markDirty()" placeholder="🔴 Service {name} is down! Error: {error}">
-                </div>
-                <div class="form-group">
-                    <label for="tpl-up">🟢 Up (Recovered)</label>
-                    <input type="text" id="tpl-up" class="input-control" oninput="markDirty()" placeholder="🟢 Service {name} is recovered">
-                </div>
-                <div class="form-group">
-                    <label for="tpl-enabled">🔵 Enabled (Monitoring On)</label>
-                    <input type="text" id="tpl-enabled" class="input-control" oninput="markDirty()" placeholder="🔵 Monitoring enabled for service {name}">
-                </div>
-                <div class="form-group">
-                    <label for="tpl-disabled">🟡 Disabled (Monitoring Off)</label>
-                    <input type="text" id="tpl-disabled" class="input-control" oninput="markDirty()" placeholder="🟡 Monitoring disabled for service {name}">
-                </div>
-                <div class="form-group">
-                    <label for="tpl-webadmin-enabled">🔵 Webadmin Autostart Enabled</label>
-                    <input type="text" id="tpl-webadmin-enabled" class="input-control" oninput="markDirty()" placeholder="🔵 Autostart enabled for Webadmin service {name}">
-                </div>
-                <div class="form-group">
-                    <label for="tpl-webadmin-disabled">🟡 Webadmin Autostart Disabled</label>
-                    <input type="text" id="tpl-webadmin-disabled" class="input-control" oninput="markDirty()" placeholder="🟡 Autostart disabled for Webadmin service {name}">
-                </div>
-            </div>
-        </details>
+
 
         <!-- Services Section -->
         <section style="display: flex; flex-direction: column; gap: 1.25rem;">
@@ -1014,6 +990,52 @@
                 <!-- Cards injected by JS -->
             </div>
         </section>
+
+        <!-- Templates Panel — collapsed by default (details/summary spoiler) -->
+        <details class="glass-panel details-panel" id="templates-details" style="margin-top: 1rem;">
+            <summary class="panel-header" style="margin-bottom:0; border-bottom:none; padding-bottom:0;">
+                <div style="display:flex; align-items:center; gap:0.75rem;">
+                    <h2 class="panel-title" style="margin:0">
+                        <span>🔔</span> Alert Templates
+                    </h2>
+                    <!-- Shown only when section is collapsed, as a hint -->
+                    <span class="details-hint">click to expand</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:1rem;">
+                    <span style="font-size: 0.8rem; color: var(--text-muted)">
+                        Available tags: {name}, {error}
+                    </span>
+                    <span class="details-arrow">▼</span>
+                </div>
+            </summary>
+            <div class="grid-templates">
+                <div class="form-group">
+                    <label for="tpl-down">🔴 Down (Failure)</label>
+                    <!-- oninput: mark unsaved changes immediately when template text changes -->
+                    <input type="text" id="tpl-down" class="input-control" oninput="markDirty()" placeholder="🔴 Service {name} is down! Error: {error}">
+                </div>
+                <div class="form-group">
+                    <label for="tpl-up">🟢 Up (Recovered)</label>
+                    <input type="text" id="tpl-up" class="input-control" oninput="markDirty()" placeholder="🟢 Service {name} is recovered">
+                </div>
+                <div class="form-group">
+                    <label for="tpl-enabled">🔵 Enabled (Monitoring On)</label>
+                    <input type="text" id="tpl-enabled" class="input-control" oninput="markDirty()" placeholder="🔵 Monitoring enabled for service {name}">
+                </div>
+                <div class="form-group">
+                    <label for="tpl-disabled">🟡 Disabled (Monitoring Off)</label>
+                    <input type="text" id="tpl-disabled" class="input-control" oninput="markDirty()" placeholder="🟡 Monitoring disabled for service {name}">
+                </div>
+                <div class="form-group">
+                    <label for="tpl-webadmin-enabled">🔵 Webadmin Autostart Enabled</label>
+                    <input type="text" id="tpl-webadmin-enabled" class="input-control" oninput="markDirty()" placeholder="🔵 Autostart enabled for Webadmin service {name}">
+                </div>
+                <div class="form-group">
+                    <label for="tpl-webadmin-disabled">🟡 Webadmin Autostart Disabled</label>
+                    <input type="text" id="tpl-webadmin-disabled" class="input-control" oninput="markDirty()" placeholder="🟡 Autostart disabled for Webadmin service {name}">
+                </div>
+            </div>
+        </details>
 
         <!-- Footer / Backup section -->
         <footer class="admin-footer">
@@ -1086,7 +1108,7 @@
                         <option value="https">HTTPS (GET)</option>
                         <option value="tcp">TCP Connection</option>
                         <option value="udp">UDP Probe</option>
-                        <option value="webadmin">Webadmin Panel (X-UI)</option>
+                        <option value="webadmin">WebAdmin (X-UI)</option>
                     </select>
                 </div>
 
@@ -1134,6 +1156,43 @@
         </div>
     </div>
 
+    <!-- Subservices Modal -->
+    <div class="modal-overlay" id="subservices-modal">
+        <div class="modal-content" style="max-width: 1200px; width: 90%;">
+            <div class="modal-header">
+                <h3 class="modal-title" id="subservices-modal-title">Sub-services</h3>
+                <button class="btn btn-secondary btn-icon" onclick="closeSubservicesModal()" style="padding: 0.25rem 0.5rem">✕</button>
+            </div>
+            <!-- Subservices filter and sort controls in unified style -->
+            <div class="filter-bar" style="margin-top: 1rem; margin-bottom: 0.5rem; gap: 0.5rem; flex-wrap: wrap;">
+                <input
+                    type="search"
+                    id="subservices-filter-input"
+                    class="filter-input"
+                    placeholder="Filter by name…"
+                    oninput="applySubservicesFilter(this.value)"
+                    autocomplete="off"
+                    style="flex: 1; min-width: 150px;"
+                >
+                <span id="subservices-filter-count" class="filter-count" style="margin: 0 0.25rem; font-size: 0.85rem; color: var(--text-muted);"></span>
+                <button id="btn-clear-subservices-filter" class="btn-clear-filter" onclick="clearSubservicesFilter()" title="Clear filter" style="display: none;">✕ Clear</button>
+                
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <label for="subservices-sort-select" style="font-size: 0.85rem; color: var(--text-muted); white-space: nowrap;">Sort by:</label>
+                    <select id="subservices-sort-select" class="input-control" onchange="applySubservicesSort(this.value)" style="padding: 0.45rem 1.5rem 0.45rem 0.75rem; font-size: 0.85rem; border-radius: 8px; width: auto; background-position: right 0.5rem center;">
+                        <option value="name-asc">Name (A-Z)</option>
+                        <option value="name-desc">Name (Z-A)</option>
+                        <option value="status-on">Active first</option>
+                        <option value="autostart-on">Enabled first</option>
+                    </select>
+                </div>
+            </div>
+            <div class="subservices-list-container" id="subservices-list-container" style="overflow-x: auto; margin-top: 0.5rem;">
+                <!-- Subservices list injected by JS -->
+            </div>
+        </div>
+    </div>
+
     <!-- Toast notifications -->
     <div class="toast-container" id="toast-container"></div>
 
@@ -1151,6 +1210,12 @@
         let serviceStatuses = {};
         // Последняя известная временная метка изменения конфигурации на сервере
         let lastConfigModified = null;
+
+        // Возвращает отображаемое имя для типа проверки
+        function getCheckTypeDisplayName(type) {
+            if (type === 'webadmin') return 'WEBADMIN';
+            return type.toUpperCase();
+        }
         // View mode: 'grid' (cards) or 'table' (compact rows); persisted in localStorage
         let viewMode = localStorage.getItem('viewMode') || 'grid';
         // Сортировка: 'default', 'name-asc', 'name-desc', 'id-asc', 'type-asc', 'status-on'; сохраняется в localStorage
@@ -1386,11 +1451,17 @@
 
                 serviceStatuses = await response.json();
                 updateDOMStatuses();
+                if (currentWebadminId) {
+                    renderSubservices();
+                }
             } catch (err) {
                 console.warn('Ошибка получения статусов сервисов:', err);
                 // При сбоях связи очищаем локальный кэш, переводя маркеры в режим "Проверка" (Unknown)
                 serviceStatuses = {};
                 updateDOMStatuses();
+                if (currentWebadminId) {
+                    renderSubservices();
+                }
             }
         }
 
@@ -1525,13 +1596,20 @@
                     `;
                 }
 
+                let webadminBtnGrid = '';
+                if (svc.type === 'webadmin') {
+                    webadminBtnGrid = `
+                        <button class="btn btn-secondary btn-icon" onclick="openSubservicesModal('${svc.id}')" title="View Sub-services" style="margin-right: auto;">🔍</button>
+                    `;
+                }
+
                 card.innerHTML = `
                     <div class="card-top">
                         <div class="service-info">
                             <h3 class="service-name" title="${svc.name}"><span class="status-indicator status-unknown" id="status-grid-${svc.id}" title="Checking status..."></span>&nbsp;${svc.name}</h3>
                             <span class="service-id">${svc.id}</span>
                             <div style="margin-top: 0.25rem;">
-                                <span class="type-badge">${svc.type}</span>
+                                <span class="type-badge">${getCheckTypeDisplayName(svc.type)}</span>
                             </div>
                         </div>
                         <label class="switch">
@@ -1543,6 +1621,7 @@
                         ${detailsHtml}
                     </div>
                     <div class="card-actions">
+                        ${webadminBtnGrid}
                         <button class="btn btn-secondary btn-icon" onclick="openEditModal('${svc.id}')" title="Edit service">✏️</button>
                         <button class="btn btn-secondary btn-icon" onclick="copyService('${svc.id}')" title="Copy service">📋</button>
                         <button class="btn btn-danger btn-icon" onclick="deleteService('${svc.id}')" title="Delete service">🗑️</button>
@@ -1559,7 +1638,13 @@
 
             let rows = '';
             services.forEach(svc => {
-                // Put type class on <tr> so CSS ancestor selectors for .type-badge still work
+                let webadminBtnTable = '';
+                if (svc.type === 'webadmin') {
+                    webadminBtnTable = `
+                        <button class="btn btn-secondary btn-icon" onclick="openSubservicesModal('${svc.id}')" title="View Sub-services" style="margin-right: 0.25rem;">🔍</button>
+                    `;
+                }
+
                 rows += `
                     <tr class="type-${svc.type} ${svc.enabled ? '' : 'row-disabled'}">
                         <td>
@@ -1573,12 +1658,13 @@
                         </td>
                         <td style="max-width:280px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${svc.name}"><span style="font-weight:600">${svc.name}</span></td>
                         <td><span class="service-id">${svc.id}</span></td>
-                        <td><span class="type-badge">${svc.type}</span></td>
+                        <td><span class="type-badge">${getCheckTypeDisplayName(svc.type)}</span></td>
                         <td style="max-width:320px; word-break:break-all;" title="${svc.target}">${svc.target}</td>
                         <td style="text-align:center">${(svc.retries !== null && svc.retries !== undefined) ? svc.retries : '—'}</td>
                         <td style="text-align:center">${svc.retry_interval || '—'}</td>
                         <td>
                             <div class="td-actions">
+                                ${webadminBtnTable}
                                 <button class="btn btn-secondary btn-icon" onclick="openEditModal('${svc.id}')" title="Edit service">✏️</button>
                                 <button class="btn btn-secondary btn-icon" onclick="copyService('${svc.id}')" title="Copy service">📋</button>
                                 <button class="btn btn-danger btn-icon" onclick="deleteService('${svc.id}')" title="Delete service">🗑️</button>
@@ -1691,6 +1777,191 @@
 
         function closeModal() {
             document.getElementById('service-modal').classList.remove('active');
+        }
+
+        let currentWebadminId = null;
+        let subservicesFilterQuery = '';
+        let subservicesSortMode = 'name-asc';
+
+        function openSubservicesModal(id) {
+            currentWebadminId = id;
+            renderSubservices();
+            document.getElementById('subservices-modal').classList.add('active');
+        }
+
+        function closeSubservicesModal() {
+            currentWebadminId = null;
+            subservicesFilterQuery = '';
+            subservicesSortMode = 'name-asc';
+            
+            const filterInput = document.getElementById('subservices-filter-input');
+            if (filterInput) filterInput.value = '';
+            
+            const sortSelect = document.getElementById('subservices-sort-select');
+            if (sortSelect) sortSelect.value = 'name-asc';
+            
+            document.getElementById('subservices-modal').classList.remove('active');
+        }
+
+        function applySubservicesFilter(value) {
+            subservicesFilterQuery = value.trim().toLowerCase();
+            renderSubservices();
+        }
+
+        function clearSubservicesFilter() {
+            subservicesFilterQuery = '';
+            const input = document.getElementById('subservices-filter-input');
+            if (input) input.value = '';
+            renderSubservices();
+        }
+
+        function applySubservicesSort(value) {
+            subservicesSortMode = value;
+            renderSubservices();
+        }
+
+        function renderSubservices() {
+            const container = document.getElementById('subservices-list-container');
+            if (!container || !currentWebadminId) return;
+
+            const svc = currentConfig.services.find(s => s.id === currentWebadminId);
+            if (!svc) {
+                container.innerHTML = '<p>Service not found.</p>';
+                return;
+            }
+
+            // Set modal title
+            document.getElementById('subservices-modal-title').textContent = `🔍 Sub-services: ${svc.name}`;
+
+            const statusInfo = serviceStatuses[currentWebadminId];
+            if (!statusInfo || !statusInfo.sub_services || statusInfo.sub_services.length === 0) {
+                container.innerHTML = `
+                    <div style="text-align: center; padding: 2rem; color: var(--text-muted);">
+                        <p>No active sub-services detected or parent service is offline.</p>
+                    </div>
+                `;
+                const filterCount = document.getElementById('subservices-filter-count');
+                if (filterCount) filterCount.textContent = '';
+                const clearBtn = document.getElementById('btn-clear-subservices-filter');
+                if (clearBtn) clearBtn.style.display = 'none';
+                return;
+            }
+
+            // 1. Filter
+            let filtered = statusInfo.sub_services;
+            if (subservicesFilterQuery) {
+                filtered = filtered.filter(sub => 
+                    sub.name.toLowerCase().includes(subservicesFilterQuery) ||
+                    sub.service_name.toLowerCase().includes(subservicesFilterQuery)
+                );
+                
+                const clearBtn = document.getElementById('btn-clear-subservices-filter');
+                if (clearBtn) clearBtn.style.display = 'inline-block';
+                const filterCount = document.getElementById('subservices-filter-count');
+                if (filterCount) filterCount.textContent = `${filtered.length} found`;
+            } else {
+                const clearBtn = document.getElementById('btn-clear-subservices-filter');
+                if (clearBtn) clearBtn.style.display = 'none';
+                const filterCount = document.getElementById('subservices-filter-count');
+                if (filterCount) filterCount.textContent = '';
+            }
+
+            // 2. Sort
+            filtered = [...filtered].sort((a, b) => {
+                switch (subservicesSortMode) {
+                    case 'name-asc':
+                        return a.name.localeCompare(b.name);
+                    case 'name-desc':
+                        return b.name.localeCompare(a.name);
+                    case 'status-on':
+                        const actA = a.healthy ? 1 : 0;
+                        const actB = b.healthy ? 1 : 0;
+                        if (actA !== actB) return actB - actA;
+                        return a.name.localeCompare(b.name);
+                    case 'autostart-on':
+                        const autoA = a.enabled ? 1 : 0;
+                        const autoB = b.enabled ? 1 : 0;
+                        if (autoA !== autoB) return autoB - autoA;
+                        return a.name.localeCompare(b.name);
+                    default:
+                        return 0;
+                }
+            });
+
+            if (filtered.length === 0) {
+                container.innerHTML = `
+                    <div style="text-align: center; padding: 2rem; color: var(--text-muted);">
+                        <p>No sub-services match the filter query.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            let rows = '';
+            filtered.forEach(sub => {
+                // Определение класса статуса и бейджа на основе физического состояния (systemd)
+                const isRunning = sub.healthy; // sub.healthy уже проверяет active_state === 'active' && sub.sub_state === 'running'
+                const isStopped = sub.active_state === 'inactive' || sub.sub_state === 'dead';
+
+                let statusClass = 'status-offline';
+                let autostartText = isRunning ? 'Enabled' : 'Disabled';
+                let autostartClass = isRunning ? 'badge-enabled' : 'badge-disabled';
+
+                if (isRunning) {
+                    // Служба успешно запущена (active/running)
+                    statusClass = 'status-online';
+                } else if (isStopped) {
+                    // Служба физически остановлена/выключена (inactive/dead)
+                    statusClass = 'status-disabled';
+                } else if (!sub.enabled) {
+                    // Сбой/ошибка, но автозапуск выключен (не мониторится)
+                    statusClass = 'status-disabled';
+                } else {
+                    // Сбой/ошибка при включенном автозапуске (activating, failed)
+                    statusClass = 'status-offline';
+                    autostartText = 'Enabled';
+                    autostartClass = 'badge-enabled';
+                }
+
+                // Если автозапуск Enabled и служба переходит в статус запуска (activating или auto-restart), делаем статус мигающим
+                if (autostartText === 'Enabled' && (sub.active_state === 'activating' || sub.sub_state === 'auto-restart')) {
+                    autostartClass += ' badge-blink';
+                }
+
+                const statusText = sub.healthy ? 'Active (running)' : `${sub.active_state} (${sub.sub_state})`;
+
+                rows += `
+                    <tr>
+                        <td style="text-align: center; vertical-align: middle; width: 40px;">
+                            <span class="status-indicator ${statusClass}" title="${statusText}"></span>
+                        </td>
+                        <td style="font-weight: 600; vertical-align: middle;">${sub.name}</td>
+                        <td style="font-family: monospace; font-size: 0.85rem; color: var(--text-muted); vertical-align: middle;">${sub.service_name}</td>
+                        <td style="text-align: center; vertical-align: middle; width: 100px;">
+                            <!-- Применяем новые классы стилей для бейджей состояния -->
+                            <span class="${autostartClass}" style="font-size: 0.75rem; padding: 0.2rem 0.5rem; border-radius: 4px; font-weight: 600;">${autostartText}</span>
+                        </td>
+                        <td style="vertical-align: middle; width: 220px;">${statusText}</td>
+                    </tr>
+                `;
+            });
+
+            container.innerHTML = `
+                <table class="services-table" style="width: 100%;">
+                    <thead>
+                        <tr>
+                            <th style="width: 40px; text-align: center;"></th>
+                            <th>Name</th>
+                            <th>Systemd Unit</th>
+                            <th style="text-align: center; width: 100px;">Enabled</th>
+                            <th style="width: 220px;">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows}
+                    </tbody>
+                </table>
+            `;
         }
 
         function toggleTypeFields() {

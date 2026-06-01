@@ -20,11 +20,22 @@ type RunningWorker struct {
 	config ServiceConfig
 }
 
+// Состояние отдельного подсервиса (systemd службы) панели Webadmin.
+type SubServiceStatus struct {
+	Name        string `json:"name"`
+	ServiceName string `json:"service_name"`
+	Enabled     bool   `json:"enabled"`
+	ActiveState string `json:"active_state"`
+	SubState    string `json:"sub_state"`
+	Healthy     bool   `json:"healthy"`
+}
+
 // Текущий статус работоспособности конкретного сервиса.
 type ServiceStatus struct {
-	Healthy   bool      `json:"healthy"`
-	LastCheck time.Time `json:"last_check"`
-	LastError string    `json:"last_error,omitempty"`
+	Healthy     bool               `json:"healthy"`
+	LastCheck   time.Time          `json:"last_check"`
+	LastError   string             `json:"last_error,omitempty"`
+	SubServices []SubServiceStatus `json:"sub_services,omitempty"` // Список подсервисов (только для типа webadmin)
 }
 
 var (
@@ -41,7 +52,7 @@ var (
 func main() {
 	// 1. Инициализация структурированного логирования со строгими уровнями.
 	initLogger()
-	slog.Info("Запуск сервиса Vigilum v1.1.0")
+	slog.Info("Запуск сервиса Vigilum v1.2.0")
 
 	// 2. Первоначальная загрузка конфигурации.
 	cfg, err := LoadConfig()
@@ -313,8 +324,35 @@ func startHealthCheckServer(ctx context.Context) {
 		statusesMu.RLock()
 		defer statusesMu.RUnlock()
 		
+		// Создаем копию карты статусов с добавлением подсервисов для webadmin-панелей
+		responseMap := make(map[string]ServiceStatus)
+		for id, status := range serviceStatuses {
+			// Проверяем наличие клиента Webadmin в реестре
+			registryMu.Lock()
+			client, ok := clientsRegistry[id]
+			registryMu.Unlock()
+			
+			if ok && client != nil {
+				client.mu.Lock()
+				var subs []SubServiceStatus
+				for _, item := range client.subStates {
+					subs = append(subs, SubServiceStatus{
+						Name:        item.Name,
+						ServiceName: item.ServiceName,
+						Enabled:     item.Enabled,
+						ActiveState: item.Status.ActiveState,
+						SubState:    item.Status.SubState,
+						Healthy:     item.Status.ActiveState == "active" && item.Status.SubState == "running",
+					})
+				}
+				client.mu.Unlock()
+				status.SubServices = subs
+			}
+			responseMap[id] = status
+		}
+		
 		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(serviceStatuses)
+		_ = json.NewEncoder(w).Encode(responseMap)
 	})
 
 	server := &http.Server{
