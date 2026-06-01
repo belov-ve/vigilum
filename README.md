@@ -65,7 +65,7 @@ vigilum/
 | `DEFAULT_RETRY_INTERVAL` | Пауза по умолчанию между повторными попытками проверки | `2s` |
 | `NOTIFY_BOT_URL`      | URL-адрес эндпоинта отправки уведомлений (`notify-bot`) | *Обязателен для заполнения* |
 | `NOTIFY_BOT_HEALTH_URL`| URL-адрес проверки доступности/здоровья `notify-bot` | Автоматически выводится из `NOTIFY_BOT_URL` (заменой пути на `/health`) |
-| `LOG_LEVEL`           | Уровень детализации логов (`DEBUG`, `INFO`, `WARN`, `ERROR`) | `INFO` |
+| `LOG_LEVEL`           | Уровень детализации логов для демона и админ-панели (`DEBUG`, `INFO`, `WARN`, `ERROR`) | `INFO` |
 | `HEALTH_PORT`         | Порт встроенного HTTP-сервера для Docker Healthcheck | `8080` |
 
 > [!TIP]
@@ -121,6 +121,8 @@ services:
 | `PORT`                | Порт, на котором будет запущен веб-сервер панели | `8080` |
 | `ADMIN_USERNAME`      | Логин для входа в панель администрирования | `admin` |
 | `ADMIN_PASSWORD`      | Пароль для входа в панель администрирования | `admin` |
+| `VIGILUM_API_URL`     | URL-адрес API демона Vigilum для получения статусов здоровья | `http://vigilum:8080` |
+| `LOG_LEVEL`           | Уровень детализации логов бэкенда панели (`DEBUG`, `INFO`, `WARN`, `ERROR`) | `INFO` |
 | `TZ`                  | Часовой пояс для корректного отображения времени событий | `Europe/Moscow` |
 
 ---
@@ -283,7 +285,7 @@ version: '3.8'
 services:
   # Основной демон мониторинга Vigilum
   vigilum:
-    image: vigilum:1.3.0
+    image: vigilum:1.3.1
     container_name: vigilum
     restart: unless-stopped
     volumes:
@@ -301,7 +303,7 @@ services:
 
   # Панель управления конфигурациями Vigilum Admin
   vigilum-admin:
-    image: vigilum-admin:1.3.0
+    image: vigilum-admin:1.3.1
     container_name: vigilum-admin
     restart: unless-stopped
     volumes:
@@ -309,6 +311,7 @@ services:
     environment:
       - CONFIG_PATH=/app/config.yaml
       - PORT=8080                                     # Внутренний порт приложения
+      - LOG_LEVEL=INFO                                # Уровень логирования (DEBUG, INFO, WARN, ERROR)
       - ADMIN_USERNAME=admin                          # Логин для входа в веб-панель
       - ADMIN_PASSWORD=admin                          # Пароль для входа в веб-панель (измените на надежный!)
       - VIGILUM_API_URL=http://vigilum:8080           # URL-адрес демона Vigilum внутри Docker-сети
