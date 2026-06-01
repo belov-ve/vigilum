@@ -52,7 +52,7 @@ var (
 func main() {
 	// 1. Инициализация структурированного логирования со строгими уровнями.
 	initLogger()
-	slog.Info("Запуск сервиса Vigilum v1.2.0")
+	slog.Info("Запуск сервиса Vigilum v1.3.1")
 
 	// 2. Первоначальная загрузка конфигурации.
 	cfg, err := LoadConfig()
@@ -156,6 +156,12 @@ func applyConfiguration(ctx context.Context, safeConfig *SafeConfig, isInitialSt
 		newServicesMap[svc.ID] = svc
 	}
 
+	// Запоминаем, какие воркеры были активны до обновления конфигурации.
+	wasActive := make(map[string]bool)
+	for id := range activeWorkers {
+		wasActive[id] = true
+	}
+
 	// 1. Останавливаем воркеры для сервисов, которые были удалены или выключены.
 	for id, worker := range activeWorkers {
 		newSvc, exists := newServicesMap[id]
@@ -188,13 +194,20 @@ func applyConfiguration(ctx context.Context, safeConfig *SafeConfig, isInitialSt
 			worker.cancel()
 			delete(activeWorkers, id)
 
-			// Удаляем статус здоровья из глобальной карты при остановке воркера.
-			statusesMu.Lock()
-			delete(serviceStatuses, id)
-			statusesMu.Unlock()
+			// Удаляем статус здоровья из глобальной карты только при полном удалении сервиса из конфигурации.
+			// Если сервис просто изменен или временно отключен, сохраняем его последний статус здоровья для
+			// корректного определения восстановления работы (AlertUp) при его повторном запуске.
+			if !exists {
+				statusesMu.Lock()
+				delete(serviceStatuses, id)
+				statusesMu.Unlock()
+			}
 
-			// Отправляем уведомление, что мониторинг сервиса отключен.
-			_ = SendAlert(safeConfig, AlertDisabled, worker.config.Name, "")
+			// Отправляем уведомление об отключении мониторинга только если сервис был удален или выключен тумблером.
+			// Если воркер перезапускается из-за изменения параметров, уведомление не посылаем.
+			if !exists || !newSvc.Enabled {
+				_ = SendAlert(safeConfig, AlertDisabled, worker.config.Name, "")
+			}
 		}
 	}
 
@@ -221,14 +234,19 @@ func applyConfiguration(ctx context.Context, safeConfig *SafeConfig, isInitialSt
 			}
 
 			workerCtx, workerCancel := context.WithCancel(ctx)
+			// Передаем флаг первоначального старта через контекст воркера
+			workerCtx = context.WithValue(workerCtx, "isInitialStart", isInitialStart)
+			// Передаем флаг повторного запуска (рестарта из-за изменения параметров) через контекст воркера
+			workerCtx = context.WithValue(workerCtx, "isRestart", wasActive[id])
+
 			activeWorkers[id] = &RunningWorker{
 				cancel: workerCancel,
 				config: newSvc,
 			}
 
-			// Отправляем уведомление о начале мониторинга только при горячей перезагрузке,
-			// но не при первоначальном запуске всего приложения.
-			if !isInitialStart {
+			// Отправляем уведомление о начале мониторинга только при горячей перезагрузке
+			// и только если сервис не был активен до этого (т.е. это не перезапуск из-за изменения параметров).
+			if !isInitialStart && !wasActive[id] {
 				_ = SendAlert(safeConfig, AlertEnabled, newSvc.Name, "")
 			}
 
@@ -268,15 +286,44 @@ func runServiceMonitorLoop(ctx context.Context, safeConfig *SafeConfig, svc Serv
 			// Выполняем проверку с учетом повторов при ошибках.
 			err := RunCheckWithRetries(ctx, safeConfig, svc)
 			isCurrentHealthy := (err == nil)
+
+			// Проверяем наличие предыдущего статуса в глобальной карте ДО ее обновления.
+			var wasUnhealthy bool
+			statusesMu.Lock()
+			if prevStatus, ok := serviceStatuses[svc.ID]; ok {
+				wasUnhealthy = !prevStatus.Healthy
+			}
+			statusesMu.Unlock()
+
 			updateServiceStatus(svc.ID, isCurrentHealthy, err)
 
 			if isFirstRun {
+
 				// Запоминаем начальное состояние службы. Если сервис сразу недоступен,
 				// отправляем уведомление об аварии (DOWN), чтобы не пропустить неисправность.
 				isPreviousHealthy = isCurrentHealthy
 				isFirstRun = false
+
+				// Извлекаем флаги из контекста.
+				isInitStart := false
+				if val, ok := ctx.Value("isInitialStart").(bool); ok {
+					isInitStart = val
+				}
+				isRestart := false
+				if val, ok := ctx.Value("isRestart").(bool); ok {
+					isRestart = val
+				}
+
 				if isCurrentHealthy {
 					slog.Info("Начальное состояние сервиса определено: ДОСТУПЕН", "service", svc.ID)
+					// Отправляем AlertUp ("🟢") только если:
+					// 1. Это не первоначальный старт демона И сервис новый/вновь включенный (не простой рестарт воркера).
+					// 2. Или сервис уже существовал, но ранее был неисправен (wasUnhealthy == true).
+					shouldAlertUp := (!isInitStart && !isRestart) || wasUnhealthy
+					if shouldAlertUp {
+						slog.Info("Отправка оповещения о доступности сервиса при запуске воркера", "service", svc.ID)
+						_ = SendAlert(safeConfig, AlertUp, svc.Name, "")
+					}
 				} else {
 					slog.Warn("Начальное состояние сервиса определено: КРИТИЧЕСКОЕ", "service", svc.ID, "error", err)
 					_ = SendAlert(safeConfig, AlertDown, svc.Name, err.Error())

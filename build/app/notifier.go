@@ -125,7 +125,8 @@ func CheckNotifyBotHealth(safeConfig *SafeConfig) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("код ответа сервера: %d %s", resp.StatusCode, resp.Status)
+		// Возвращаем ошибку с описанием статуса (resp.Status уже содержит код ответа, например, "404 Not Found")
+		return fmt.Errorf("код ответа сервера: %s", resp.Status)
 	}
 
 	return nil

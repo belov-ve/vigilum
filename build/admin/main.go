@@ -84,9 +84,8 @@ var (
 )
 
 func main() {
-	// Инициализируем логгер с выводом в формате Text для наглядности в терминале.
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
-	slog.SetDefault(logger)
+	// Инициализируем глобальный логгер с учетом уровня логирования из переменной окружения LOG_LEVEL.
+	initLogger()
 
 	slog.Info("Запуск административной панели vigilum-admin...")
 
@@ -207,6 +206,9 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Отладочное логирование попытки входа
+	slog.Debug("Попытка авторизации пользователя", "username", creds.Username)
+
 	// Сравнение учетных данных с защитой от атак по времени (Timing Attacks)
 	if subtle.ConstantTimeCompare([]byte(creds.Username), []byte(adminUser)) != 1 ||
 		subtle.ConstantTimeCompare([]byte(creds.Password), []byte(adminPass)) != 1 {
@@ -221,6 +223,9 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 	sessionsMu.Lock()
 	sessions[token] = time.Now().Add(sessionDuration)
 	sessionsMu.Unlock()
+
+	// Отладочное логирование успешного создания сессии
+	slog.Debug("Создана новая сессия администратора", "username", creds.Username, "token", token)
 
 	// Устанавливаем HTTP-only куку
 	http.SetCookie(w, &http.Cookie{
@@ -239,13 +244,15 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 // POST /api/auth/logout: Сбрасывает текущую сессию и удаляет куку.
-func handleLogout(w http.ResponseWriter, r *http.Request) {
-	cookie, err := r.Cookie("session_token")
-	if err == nil {
-		sessionsMu.Lock()
-		delete(sessions, cookie.Value)
-		sessionsMu.Unlock()
-	}
+	func handleLogout(w http.ResponseWriter, r *http.Request) {
+		cookie, err := r.Cookie("session_token")
+		if err == nil {
+			sessionsMu.Lock()
+			delete(sessions, cookie.Value)
+			sessionsMu.Unlock()
+			// Отладочное логирование удаления сессии
+			slog.Debug("Удалена сессия администратора по токену", "token", cookie.Value)
+		}
 
 	// Удаляем куку на клиенте (сдвигая время назад)
 	http.SetCookie(w, &http.Cookie{
@@ -268,6 +275,8 @@ func sessionAuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Разрешаем свободный доступ к главной странице и эндпоинту входа
 		if r.URL.Path == "/" || r.URL.Path == "/api/auth/login" {
+			// Отладочное логирование доступа к публичным путям
+			slog.Debug("Доступ разрешен к публичному эндпоинту", "path", r.URL.Path)
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -275,6 +284,8 @@ func sessionAuthMiddleware(next http.Handler) http.Handler {
 		// Для остальных эндпоинтов проверяем куку сессии
 		cookie, err := r.Cookie("session_token")
 		if err != nil {
+			// Отладочное логирование отсутствия куки сессии
+			slog.Debug("Запрос к защищенному эндпоинту отклонен: отсутствует кука сессии", "path", r.URL.Path)
 			w.WriteHeader(http.StatusUnauthorized)
 			_, _ = w.Write([]byte("401 Unauthorized\n"))
 			return
@@ -288,6 +299,9 @@ func sessionAuthMiddleware(next http.Handler) http.Handler {
 				delete(sessions, token)
 			}
 			sessionsMu.Unlock()
+			
+			// Отладочное логирование невалидности/истечения сессии
+			slog.Debug("Запрос к защищенному эндпоинту отклонен: сессия не существует или истекла", "path", r.URL.Path, "token", token)
 			
 			// Сбрасываем невалидную куку
 			http.SetCookie(w, &http.Cookie{
@@ -309,6 +323,9 @@ func sessionAuthMiddleware(next http.Handler) http.Handler {
 		sessions[token] = time.Now().Add(sessionDuration)
 		sessionsMu.Unlock()
 
+		// Отладочное логирование успешной авторизации защищенного запроса
+		slog.Debug("Авторизация пройдена, сессия продлена", "path", r.URL.Path, "token", token)
+
 		next.ServeHTTP(w, r)
 	})
 }
@@ -325,6 +342,8 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 
 // GET /api/config: Читает config.yaml и отдает его в JSON-формате.
 func handleGetConfig(w http.ResponseWriter, r *http.Request) {
+	// Отладочное логирование запроса конфигурации
+	slog.Debug("Получен запрос на чтение файла конфигурации")
 	configMu.Lock()
 	defer configMu.Unlock()
 
@@ -344,6 +363,8 @@ func handleGetConfig(w http.ResponseWriter, r *http.Request) {
 
 // POST /api/config: Принимает обновленный JSON, валидирует и записывает в config.yaml.
 func handleSaveConfig(w http.ResponseWriter, r *http.Request) {
+	// Отладочное логирование начала процесса сохранения
+	slog.Debug("Получен запрос на сохранение новой конфигурации")
 	bodyBytes, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "Failed to read request body", http.StatusBadRequest)
@@ -396,6 +417,9 @@ func handleToggleService(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Отладочное логирование запроса на переключение статуса сервиса
+	slog.Debug("Получен запрос на переключение статуса активности сервиса", "id", req.ID, "enabled", req.Enabled)
+
 	if req.ID == "" {
 		http.Error(w, "Service ID is required", http.StatusBadRequest)
 		return
@@ -441,6 +465,8 @@ func handleToggleService(w http.ResponseWriter, r *http.Request) {
 
 // GET /api/config/export: Отдает рав файл config.yaml для скачивания на компьютер администратора.
 func handleExportConfig(w http.ResponseWriter, r *http.Request) {
+	// Отладочное логирование экспорта конфигурации
+	slog.Debug("Получен запрос на экспорт файла конфигурации")
 	configMu.Lock()
 	defer configMu.Unlock()
 
@@ -461,6 +487,8 @@ func handleExportConfig(w http.ResponseWriter, r *http.Request) {
 
 // POST /api/config/import: Принимает загруженный YAML-файл, валидирует и применяет его как новую конфигурацию.
 func handleImportConfig(w http.ResponseWriter, r *http.Request) {
+	// Отладочное логирование импорта конфигурации
+	slog.Debug("Получен запрос на импорт файла конфигурации")
 	// Ограничиваем размер загрузки до 1 МБ для защиты от злоупотребления.
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 
@@ -609,6 +637,8 @@ func validateConfig(cfg Config) error {
 
 // GET /api/statuses: Запрашивает текущие статусы у демона Vigilum и проксирует их клиенту.
 func handleGetStatuses(w http.ResponseWriter, r *http.Request) {
+	// Отладочное логирование запроса статусов
+	slog.Debug("Получен запрос статусов сервисов, проксирование к демону Vigilum", "url", vigilumAPIURL)
 	client := http.Client{
 		Timeout: 2 * time.Second,
 	}
@@ -636,6 +666,35 @@ func handleGetStatuses(w http.ResponseWriter, r *http.Request) {
 	setConfigLastModifiedHeader(w)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
+	// Отладочное логирование успешного проксирования статусов
+	slog.Debug("Статусы успешно получены от демона и проксированы клиенту")
 	_, _ = io.Copy(w, resp.Body)
 }
+
+// Инициализирует глобальный логгер slog в зависимости от переменной окружения LOG_LEVEL.
+// По умолчанию используется уровень логирования INFO для обеспечения сбалансированного вывода.
+func initLogger() {
+	logLevelStr := os.Getenv("LOG_LEVEL")
+	var level slog.Level
+
+	// Определяем уровень логирования на основе полученного из окружения значения
+	switch logLevelStr {
+	case "DEBUG":
+		level = slog.LevelDebug
+	case "WARN", "WARNING":
+		level = slog.LevelWarn
+	case "ERROR":
+		level = slog.LevelError
+	default:
+		level = slog.LevelInfo
+	}
+
+	opts := &slog.HandlerOptions{
+		Level: level,
+	}
+	// Создаем текстовый обработчик логов с выводом в стандартный поток вывода
+	handler := slog.NewTextHandler(os.Stdout, opts)
+	slog.SetDefault(slog.New(handler))
+}
+
 

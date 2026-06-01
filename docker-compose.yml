@@ -4,7 +4,7 @@ services:
     build:
       context: .
       dockerfile: build/Dockerfile
-    image: vigilum:1.2.0
+    image: vigilum:1.3.1
     container_name: vigilum
     volumes:
       - ./config.yaml:/app/config.yaml
@@ -18,19 +18,24 @@ services:
       - TZ=Europe/Moscow
     ports:
       - "18080:8080" # Порт для healthcheck
+    # networks:
+    #   vigilum_net:
+    #     ipv4_address: 172.100.0.10
     restart: unless-stopped
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
+    labels:
+      - "autoheal=true"
 
   # Панель управления конфигурациями Vigilum
   vigilum-admin:
     build:
       context: .
       dockerfile: build/admin/Dockerfile
-    image: vigilum-admin:1.2.0
+    image: vigilum-admin:1.3.1
     container_name: vigilum-admin
     volumes:
       - ./config.yaml:/app/config.yaml
@@ -39,16 +44,21 @@ services:
       - PORT=8080
       - ADMIN_USERNAME=admin
       - ADMIN_PASSWORD=admin
+      - LOG_LEVEL=INFO
       - VIGILUM_API_URL=http://vigilum:8080
       - TZ=Europe/Moscow
     ports:
       - "18082:8080" # Внешний порт панели управления: http://localhost:18082
+    # networks:
+    #   - vigilum_net
     restart: unless-stopped
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
+    labels:
+      - "autoheal=true"
 	
   # Эмулятор бота для тестирования отправки оповещений локально
   mock-bot:
@@ -65,3 +75,9 @@ services:
     depends_on:
       - vigilum
     restart: unless-stopped
+# networks:
+#   vigilum_net:
+#     driver: bridge
+#     ipam:
+#       config:
+#         - subnet: 172.100.0.0/16
