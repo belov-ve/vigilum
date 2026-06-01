@@ -84,9 +84,8 @@ var (
 )
 
 func main() {
-	// Инициализируем логгер с выводом в формате Text для наглядности в терминале.
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
-	slog.SetDefault(logger)
+	// Инициализируем глобальный логгер с учетом уровня логирования из переменной окружения LOG_LEVEL.
+	initLogger()
 
 	slog.Info("Запуск административной панели vigilum-admin...")
 
@@ -638,4 +637,31 @@ func handleGetStatuses(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	_, _ = io.Copy(w, resp.Body)
 }
+
+// Инициализирует глобальный логгер slog в зависимости от переменной окружения LOG_LEVEL.
+// По умолчанию используется уровень логирования INFO для обеспечения сбалансированного вывода.
+func initLogger() {
+	logLevelStr := os.Getenv("LOG_LEVEL")
+	var level slog.Level
+
+	// Определяем уровень логирования на основе полученного из окружения значения
+	switch logLevelStr {
+	case "DEBUG":
+		level = slog.LevelDebug
+	case "WARN", "WARNING":
+		level = slog.LevelWarn
+	case "ERROR":
+		level = slog.LevelError
+	default:
+		level = slog.LevelInfo
+	}
+
+	opts := &slog.HandlerOptions{
+		Level: level,
+	}
+	// Создаем текстовый обработчик логов с выводом в стандартный поток вывода
+	handler := slog.NewTextHandler(os.Stdout, opts)
+	slog.SetDefault(slog.New(handler))
+}
+
 

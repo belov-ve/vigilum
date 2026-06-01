@@ -103,8 +103,8 @@ func checkHTTP(ctx context.Context, target string) error {
 
 	// Статусы ответов 4xx и 5xx считаются ошибкой.
 	if resp.StatusCode >= 400 {
-		// Возвращаем ошибку с кодом статуса на английском языке.
-		return fmt.Errorf("server returned error code: %d %s", resp.StatusCode, resp.Status)
+		// Возвращаем ошибку с кодом статуса на английском языке (избегаем дублирования кода из resp.Status).
+		return fmt.Errorf("server returned error: %s", resp.Status)
 	}
 
 	return nil

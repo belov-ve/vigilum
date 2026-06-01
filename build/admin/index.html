@@ -171,6 +171,30 @@
             cursor: not-allowed;
         }
 
+        /* Отмена стандартного желтого фона браузера при автозаполнении полей */
+        .input-control:-webkit-autofill,
+        .input-control:-webkit-autofill:hover, 
+        .input-control:-webkit-autofill:focus,
+        .input-control:-webkit-autofill:active {
+            -webkit-box-shadow: 0 0 0 1000px #111827 inset !important;
+            -webkit-text-fill-color: var(--text-color) !important;
+            transition: background-color 5000s ease-in-out 0s;
+        }
+
+        /* Стилизация активных внешних ссылок для веб-сервисов */
+        .service-link {
+            color: inherit;
+            text-decoration: underline;
+            text-decoration-color: rgba(243, 244, 246, 0.4);
+            text-underline-offset: 3px;
+            transition: all 0.2s ease;
+        }
+        .service-link:hover {
+            color: inherit;
+            text-decoration-color: var(--text-color);
+            opacity: 0.85;
+        }
+
         /* Actions buttons */
         .btn {
             display: inline-flex;
@@ -929,7 +953,7 @@
         <div class="logo-container">
             <span class="logo-icon">V</span>
             <h1 class="logo-title">Vigilum Admin</h1>
-            <span class="logo-badge">v1.2.0</span>
+            <span class="logo-badge">v1.3.0</span>
         </div>
         <button class="btn btn-success" id="btn-save-all" onclick="saveAllConfig()">
             Save Configuration
@@ -1016,7 +1040,7 @@
                 </div>
                 <div class="form-group">
                     <label for="tpl-up">🟢 Up (Recovered)</label>
-                    <input type="text" id="tpl-up" class="input-control" oninput="markDirty()" placeholder="🟢 Service {name} is recovered">
+                    <input type="text" id="tpl-up" class="input-control" oninput="markDirty()" placeholder="🟢 Service {name} is available / recovered">
                 </div>
                 <div class="form-group">
                     <label for="tpl-enabled">🔵 Enabled (Monitoring On)</label>
@@ -1564,10 +1588,16 @@
                 const card = document.createElement('div');
                 card.className = `service-card type-${svc.type} ${svc.enabled ? '' : 'disabled'}`;
                 
+                // Для веб-сервисов делаем адрес хоста кликабельной внешней ссылкой
+                let targetHtml = svc.target;
+                if (svc.type === 'http' || svc.type === 'https' || svc.type === 'webadmin') {
+                    targetHtml = `<a href="${svc.target}" target="_blank" rel="noopener noreferrer" class="service-link" title="Открыть ${svc.target}">${svc.target}</a>`;
+                }
+
                 let detailsHtml = `
                     <div class="detail-row">
                         <span class="detail-label">Target:</span>
-                        <span class="detail-value">${svc.target}</span>
+                        <span class="detail-value">${targetHtml}</span>
                     </div>
                 `;
 
@@ -1645,6 +1675,12 @@
                     `;
                 }
 
+                // Для веб-сервисов делаем адрес хоста кликабельной внешней ссылкой
+                let targetHtml = svc.target;
+                if (svc.type === 'http' || svc.type === 'https' || svc.type === 'webadmin') {
+                    targetHtml = `<a href="${svc.target}" target="_blank" rel="noopener noreferrer" class="service-link" title="Открыть ${svc.target}">${svc.target}</a>`;
+                }
+
                 rows += `
                     <tr class="type-${svc.type} ${svc.enabled ? '' : 'row-disabled'}">
                         <td>
@@ -1659,7 +1695,7 @@
                         <td style="max-width:280px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${svc.name}"><span style="font-weight:600">${svc.name}</span></td>
                         <td><span class="service-id">${svc.id}</span></td>
                         <td><span class="type-badge">${getCheckTypeDisplayName(svc.type)}</span></td>
-                        <td style="max-width:320px; word-break:break-all;" title="${svc.target}">${svc.target}</td>
+                        <td style="max-width:320px; word-break:break-all;" title="${svc.target}">${targetHtml}</td>
                         <td style="text-align:center">${(svc.retries !== null && svc.retries !== undefined) ? svc.retries : '—'}</td>
                         <td style="text-align:center">${svc.retry_interval || '—'}</td>
                         <td>

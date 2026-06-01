@@ -147,7 +147,7 @@ func LoadConfig() (*Config, error) {
 		cfg.Templates.Down = "🔴 Service {name} is down!\nError: {error}"
 	}
 	if cfg.Templates.Up == "" {
-		cfg.Templates.Up = "🟢 Service {name} is recovered"
+		cfg.Templates.Up = "🟢 Service {name} is available / recovered"
 	}
 	if cfg.Templates.Enabled == "" {
 		cfg.Templates.Enabled = "🔵 Monitoring enabled for service {name}"

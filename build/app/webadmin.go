@@ -156,8 +156,8 @@ func (c *WebadminClient) checkSystemStatus(ctx context.Context) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		// Возвращаем ошибку с кодом ответа на английском языке.
-		return fmt.Errorf("server response code: %d %s", resp.StatusCode, resp.Status)
+		// Возвращаем ошибку с кодом ответа на английском языке (избегаем дублирования кода из resp.Status).
+		return fmt.Errorf("server response: %s", resp.Status)
 	}
 
 	// Читаем и декодируем ответ для проверки корректности JSON.
@@ -263,8 +263,8 @@ func (c *WebadminClient) fetchConfigs(ctx context.Context) ([]WebadminConfigItem
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		// Возвращаем ошибку с кодом ответа при запросе конфигураций на английском языке.
-		return nil, fmt.Errorf("response code when fetching configurations: %d %s (body:\n%s)", resp.StatusCode, resp.Status, prettyPrintJSON(body))
+		// Возвращаем ошибку с кодом ответа при запросе конфигураций на английском языке (избегаем дублирования статус-кода).
+		return nil, fmt.Errorf("error when fetching configurations: %s (body:\n%s)", resp.Status, prettyPrintJSON(body))
 	}
 
 	body, err := io.ReadAll(resp.Body)

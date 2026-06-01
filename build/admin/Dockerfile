@@ -35,5 +35,9 @@ ENV ADMIN_PASSWORD=admin
 # Открываем порт для панели управления
 EXPOSE 8080
 
+# Инструкция Docker для проверки работоспособности контейнера (опрос корневой страницы)
+HEALTHCHECK --interval=15s --timeout=3s --start-period=5s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:8080/ || exit 1
+
 # Команда запуска панели управления
 ENTRYPOINT ["/usr/local/bin/vigilum-admin"]
