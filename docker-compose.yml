@@ -4,7 +4,7 @@ services:
     build:
       context: .
       dockerfile: build/Dockerfile
-    image: vigilum:1.1.0
+    image: vigilum:1.2.0
     container_name: vigilum
     volumes:
       - ./config.yaml:/app/config.yaml
@@ -19,13 +19,18 @@ services:
     ports:
       - "18080:8080" # Порт для healthcheck
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # Панель управления конфигурациями Vigilum
   vigilum-admin:
     build:
       context: .
       dockerfile: build/admin/Dockerfile
-    image: vigilum-admin:1.1.0
+    image: vigilum-admin:1.2.0
     container_name: vigilum-admin
     volumes:
       - ./config.yaml:/app/config.yaml

@@ -337,52 +337,95 @@ func (c *WebadminClient) processSubServices(safeConfig *SafeConfig, parentName s
 			"old_active", oldItem.Status.ActiveState, 
 			"new_active", newItem.Status.ActiveState)
 
-		// 1. Обрабатываем изменение флага Enabled (включение/отключение автозапуска в Webadmin).
-		if oldItem.Enabled && !newItem.Enabled {
-			// Автозапуск сервиса был отключен администратором.
-			slog.Info("Автозапуск внутреннего сервиса Webadmin отключен (enabled=false)", "parent", parentName, "service", newItem.Name)
-			// Оповещение об отключении автозапуска.
-			_ = SendAlert(safeConfig, AlertWebadminDisabled, fullName, "Autostart disabled in Webadmin")
-		} else if !oldItem.Enabled && newItem.Enabled {
-			// Автозапуск сервиса был включен администратором.
-			slog.Info("Автозапуск внутреннего сервиса Webadmin включен (enabled=true)", "parent", parentName, "service", newItem.Name)
-			_ = SendAlert(safeConfig, AlertWebadminEnabled, fullName, "")
+		// Определяем физические состояния запуска службы для старого (oldItem) и нового (newItem) состояний.
+		// Физическое состояние определяется строго по полям ActiveState и SubState в JSON-ответе.
+		
+		// Состояние Running (служба успешно запущена и работает)
+		oldRunning := oldItem.Status.ActiveState == "active" && oldItem.Status.SubState == "running"
+		newRunning := newItem.Status.ActiveState == "active" && newItem.Status.SubState == "running"
+
+		// Состояние Stopped (служба штатно остановлена / выключена)
+		oldStopped := oldItem.Status.ActiveState == "inactive" || oldItem.Status.SubState == "dead"
+		newStopped := newItem.Status.ActiveState == "inactive" || newItem.Status.SubState == "dead"
+
+		// Состояние Failed (служба находится в состоянии ошибки / сбоя / автоматического перезапуска)
+		oldFailed := oldItem.Status.ActiveState == "failed" || oldItem.Status.SubState == "failed" ||
+			(oldItem.Status.ActiveState == "activating" && oldItem.Status.SubState == "auto-restart")
+		newFailed := newItem.Status.ActiveState == "failed" || newItem.Status.SubState == "failed" ||
+			(newItem.Status.ActiveState == "activating" && newItem.Status.SubState == "auto-restart")
+
+		// 1. Отслеживаем физические переходы состояния службы и отправляем алерты
+		if !oldRunning && newRunning {
+			// Переход в Running (служба успешно запустилась из любого другого состояния)
+			if newItem.Enabled {
+				// Если автозапуск включен, это штатное восстановление службы (UP)
+				slog.Info("Внутренний сервис Webadmin восстановил работу (запущен)", "parent", parentName, "service", newItem.Name)
+				_ = SendAlert(safeConfig, AlertUp, fullName, "")
+			} else {
+				// Если автозапуск выключен, это запуск администратором вручную (ENABLED)
+				slog.Info("Внутренний сервис Webadmin запущен вручную", "parent", parentName, "service", newItem.Name)
+				_ = SendAlert(safeConfig, AlertWebadminEnabled, fullName, "Service started (manual)")
+			}
+		} else if (oldRunning || oldFailed) && newStopped {
+			// Переход в Stopped (служба была выключена или переведена в inactive/dead)
+			if newItem.Enabled {
+				// Если автозапуск включен, но служба физически остановилась — это сбой (DOWN)
+				errDesc := fmt.Sprintf("active_state=%s, sub_state=%s", newItem.Status.ActiveState, newItem.Status.SubState)
+				slog.Warn("Внутренний сервис Webadmin остановлен при включенном автозапуске", "parent", parentName, "service", newItem.Name, "details", errDesc)
+				_ = SendAlert(safeConfig, AlertDown, fullName, errDesc)
+			} else {
+				// Если автозапуск выключен, это штатное отключение/остановка администратором (DISABLED)
+				slog.Info("Внутренний сервис Webadmin штатно остановлен/выключен", "parent", parentName, "service", newItem.Name)
+				_ = SendAlert(safeConfig, AlertWebadminDisabled, fullName, "Service stopped (disabled)")
+			}
+		} else if (oldRunning || oldStopped) && newFailed {
+			// Переход в Failed (служба упала в сбой или ушла в цикл автоперезапуска из рабочего/остановленного состояния)
+			if newItem.Enabled {
+				// Если автозапуск включен, сбой считается критической аварией (DOWN)
+				errDesc := fmt.Sprintf("active_state=%s, sub_state=%s", newItem.Status.ActiveState, newItem.Status.SubState)
+				slog.Warn("Внутренний сервис Webadmin перешел в аварийное состояние (сбой)", "parent", parentName, "service", newItem.Name, "details", errDesc)
+				_ = SendAlert(safeConfig, AlertDown, fullName, errDesc)
+			} else {
+				// Если автозапуск выключен, сбой не логируется как критический аварийный DOWN.
+				// Однако, если служба до этого физически работала (oldRunning), мы отправляем предупреждение об остановке (DISABLED)
+				if oldRunning {
+					slog.Info("Внутренний сервис Webadmin отключен (ушел в сбой при выключенном автозапуске)", "parent", parentName, "service", newItem.Name)
+					_ = SendAlert(safeConfig, AlertWebadminDisabled, fullName, "Service stopped (disabled/failed)")
+				}
+			}
 		}
 
-		// 2. Всегда проверяем изменения его работоспособности (здоровья), независимо от флага Enabled (автозапуска).
-		oldHealthy := isHealthy(oldItem.Status)
-		newHealthy := isHealthy(newItem.Status)
-
-		if oldHealthy && !newHealthy {
-			// Сервис перешел в состояние аварии.
-			errDesc := fmt.Sprintf("active_state=%s, sub_state=%s", newItem.Status.ActiveState, newItem.Status.SubState)
-			slog.Warn("Внутренний сервис Webadmin перешел в аварийное состояние", "parent", parentName, "service", newItem.Name, "details", errDesc)
+		// 2. Отслеживаем включение автозапуска для уже лежащей службы
+		if !oldItem.Enabled && newItem.Enabled && !newRunning {
+			// Автозапуск был включен, но служба не работает — отправляем алерт DOWN
+			errDesc := fmt.Sprintf("active_state=%s, sub_state=%s (detected on autostart enable)", newItem.Status.ActiveState, newItem.Status.SubState)
+			slog.Warn("Внутренний сервис Webadmin лежит при включении автозапуска", "parent", parentName, "service", newItem.Name, "details", errDesc)
 			_ = SendAlert(safeConfig, AlertDown, fullName, errDesc)
-		} else if !oldHealthy && newHealthy {
-			// Сервис восстановился (или запустился).
-			slog.Info("Внутренний сервис Webadmin восстановил работу", "parent", parentName, "service", newItem.Name)
-			_ = SendAlert(safeConfig, AlertUp, fullName, "")
-		} else if oldItem.Status.ActiveState != newItem.Status.ActiveState || oldItem.Status.SubState != newItem.Status.SubState {
-			// Изменение внутренних статусов systemd без смены критического состояния здоровья.
-			slog.Debug("Изменение статуса подсервиса Webadmin", "service", newItem.Name, "old_active", oldItem.Status.ActiveState, "new_active", newItem.Status.ActiveState, "old_sub", oldItem.Status.SubState, "new_sub", newItem.Status.SubState)
 		}
 
-		// Обновляем сохраненный статус в кэше.
+		// Обновляем сохраненный статус в локальном кэше состояний
 		c.subStates[sName] = newItem
 	}
 
-	// 2. Проверяем новые добавленные сервисы.
+	// 2. Проверяем новые добавленные службы и отправляем оповещения по их текущему состоянию
 	for sName, newItem := range currentMap {
 		if _, exists := c.subStates[sName]; !exists {
 			fullName := fmt.Sprintf("%s / %s (%s)", parentName, newItem.Name, newItem.ServiceName)
 			slog.Info("Добавлен новый внутренний сервис Webadmin", "parent", parentName, "service", newItem.Name, "service_name", sName)
 			
-			// Отправляем оповещение о начале мониторинга нового сервиса.
-			// Если автозапуск выключен, посылаем AlertWebadminDisabled, если включен - AlertWebadminEnabled.
-			if newItem.Enabled {
-				_ = SendAlert(safeConfig, AlertWebadminEnabled, fullName, "")
+			newRunning := newItem.Status.ActiveState == "active" && newItem.Status.SubState == "running"
+			if newRunning {
+				if newItem.Enabled {
+					_ = SendAlert(safeConfig, AlertUp, fullName, "New service running")
+				} else {
+					_ = SendAlert(safeConfig, AlertWebadminEnabled, fullName, "New service running (manual)")
+				}
 			} else {
-				_ = SendAlert(safeConfig, AlertWebadminDisabled, fullName, "Added in disabled state")
+				if newItem.Enabled {
+					_ = SendAlert(safeConfig, AlertDown, fullName, "New service not running")
+				} else {
+					_ = SendAlert(safeConfig, AlertWebadminDisabled, fullName, "New service stopped")
+				}
 			}
 			c.subStates[sName] = newItem
 		}
