@@ -285,7 +285,7 @@ version: '3.8'
 services:
   # Основной демон мониторинга Vigilum
   vigilum:
-    image: vigilum:1.3.1
+    image: vigilum:1.3.2
     container_name: vigilum
     restart: unless-stopped
     volumes:
@@ -303,7 +303,7 @@ services:
 
   # Панель управления конфигурациями Vigilum Admin
   vigilum-admin:
-    image: vigilum-admin:1.3.1
+    image: vigilum-admin:1.3.2
     container_name: vigilum-admin
     restart: unless-stopped
     volumes:

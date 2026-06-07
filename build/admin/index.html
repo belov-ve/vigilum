@@ -953,7 +953,7 @@
         <div class="logo-container">
             <span class="logo-icon">V</span>
             <h1 class="logo-title">Vigilum Admin</h1>
-            <span class="logo-badge">v1.3.1</span>
+            <span class="logo-badge">v1.3.2</span>
         </div>
         <button class="btn btn-success" id="btn-save-all" onclick="saveAllConfig()">
             Save Configuration
@@ -1784,6 +1784,12 @@
             document.getElementById('svc-username').value = '';
             document.getElementById('svc-password').value = '';
 
+            // Устанавливаем динамические placeholder'ы на основе значений по умолчанию из конфигурации
+            const defRetries = (currentConfig && currentConfig.default_retries !== undefined) ? currentConfig.default_retries : '3';
+            const defRetryInterval = (currentConfig && currentConfig.default_retry_interval) || '2s';
+            document.getElementById('svc-retries').placeholder = `Default ${defRetries}`;
+            document.getElementById('svc-retry-interval').placeholder = `Default ${defRetryInterval}`;
+
             toggleTypeFields();
             document.getElementById('service-modal').classList.add('active');
         }
@@ -1806,6 +1812,12 @@
             document.getElementById('svc-retry-interval').value = svc.retry_interval || '';
             document.getElementById('svc-username').value = svc.username || '';
             document.getElementById('svc-password').value = svc.password || '';
+
+            // Устанавливаем динамические placeholder'ы на основе значений по умолчанию из конфигурации
+            const defRetries = (currentConfig && currentConfig.default_retries !== undefined) ? currentConfig.default_retries : '3';
+            const defRetryInterval = (currentConfig && currentConfig.default_retry_interval) || '2s';
+            document.getElementById('svc-retries').placeholder = `Default ${defRetries}`;
+            document.getElementById('svc-retry-interval').placeholder = `Default ${defRetryInterval}`;
 
             toggleTypeFields();
             document.getElementById('service-modal').classList.add('active');

@@ -11,6 +11,25 @@ import (
 	"time"
 )
 
+// checkHTTPClient — выделенный HTTP-клиент для проведения проверок доступности.
+// Для исключения взаимных блокировок и зависания запросов в пуле соединений (connection pool)
+// при возникновении сетевых сбоев, для этого клиента полностью отключен Keep-Alive (DisableKeepAlives: true).
+// Это гарантирует, что каждая попытка проверки (включая повторные попытки) будет использовать
+// свежее TCP-соединение.
+var checkHTTPClient = &http.Client{
+	Timeout: 5 * time.Second, // Максимальный таймаут всей операции (включая чтение ответа)
+	Transport: &http.Transport{
+		DisableKeepAlives: true,                  // Отключаем повторное использование TCP-соединений
+		Proxy:             http.ProxyFromEnvironment, // Поддержка системного прокси
+		DialContext: (&net.Dialer{
+			Timeout:   5 * time.Second, // Таймаут установления TCP-соединения
+			KeepAlive: 0,               // Отключаем keep-alive на уровне TCP-сокета
+		}).DialContext,
+		TLSHandshakeTimeout:   5 * time.Second, // Таймаут на TLS-рукопожатие
+		ExpectContinueTimeout: 1 * time.Second,
+	},
+}
+
 // Выполняет проверку целевого ресурса в зависимости от его типа с учетом заданного количества повторов.
 func RunCheckWithRetries(ctx context.Context, safeConfig *SafeConfig, svc ServiceConfig) error {
 	cfg := safeConfig.Get()
@@ -94,8 +113,8 @@ func checkHTTP(ctx context.Context, target string) error {
 		return fmt.Errorf("failed to create HTTP request: %w", err)
 	}
 
-	// Отправляем запрос, используя стандартный HTTP-клиент.
-	resp, err := http.DefaultClient.Do(req)
+	// Отправляем запрос, используя выделенный HTTP-клиент без сохранения состояния соединений.
+	resp, err := checkHTTPClient.Do(req)
 	if err != nil {
 		return err
 	}
