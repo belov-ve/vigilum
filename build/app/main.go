@@ -78,7 +78,7 @@ func main() {
 	defer mainCancel()
 
 	// 3. Запуск HTTP-сервера для docker healthcheck.
-	startHealthCheckServer(mainCtx)
+	startHealthCheckServer(mainCtx, safeConfig)
 
 	// 4. Запуск планировщика воркеров на основе текущей конфигурации.
 	applyConfiguration(mainCtx, safeConfig, true)
@@ -350,7 +350,7 @@ func runServiceMonitorLoop(ctx context.Context, safeConfig *SafeConfig, svc Serv
 }
 
 // Запускает встроенный HTTP-сервер для docker healthcheck.
-func startHealthCheckServer(ctx context.Context) {
+func startHealthCheckServer(ctx context.Context, safeConfig *SafeConfig) {
 	port := os.Getenv("HEALTH_PORT")
 	if port == "" {
 		port = "8080"
@@ -361,6 +361,17 @@ func startHealthCheckServer(ctx context.Context) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_ = json.NewEncoder(w).Encode(map[string]string{"status": "healthy", "time": time.Now().Format(time.RFC3339)})
+	})
+
+	// Возвращает настройки по умолчанию из переменных окружения демона
+	mux.HandleFunc("/api/defaults", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		cfg := safeConfig.Get()
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"default_retries":        cfg.Global.DefaultRetries,
+			"default_retry_interval": cfg.Global.DefaultRetryInterval.String(),
+		})
 	})
 
 	// Возвращает актуальный статус здоровья всех контролируемых сервисов в RAM.

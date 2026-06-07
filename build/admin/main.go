@@ -87,6 +87,12 @@ var (
 	// Значения по умолчанию для количества попыток и паузы, считываемые при запуске.
 	defaultRetries       int
 	defaultRetryInterval string
+
+	// Кэшированные значения по умолчанию, запрашиваемые от демона Vigilum
+	cachedDefaultRetries       int
+	cachedDefaultRetryInterval string
+	defaultsFetched            bool
+	defaultsMu                 sync.Mutex
 )
 
 func main() {
@@ -123,6 +129,9 @@ func main() {
 	if defaultRetryInterval == "" {
 		defaultRetryInterval = "2s"
 	}
+
+	// Логируем загруженные значения для отладки
+	slog.Info("Загружены параметры по умолчанию для плейсхолдеров", "default_retries", defaultRetries, "default_retry_interval", defaultRetryInterval)
 
 	// Считываем логин и пароль администратора.
 	adminUser = os.Getenv("ADMIN_USERNAME")
@@ -564,11 +573,47 @@ func readConfigFile() (*Config, error) {
 	fileBytes, err := os.ReadFile(configPath)
 	if err != nil {
 		if os.IsNotExist(err) {
+			// Определяем значения по умолчанию
+			retriesVal := defaultRetries
+			retryIntervalVal := defaultRetryInterval
+
+			defaultsMu.Lock()
+			if defaultsFetched {
+				retriesVal = cachedDefaultRetries
+				retryIntervalVal = cachedDefaultRetryInterval
+				defaultsMu.Unlock()
+			} else {
+				defaultsMu.Unlock()
+				client := http.Client{
+					Timeout: 200 * time.Millisecond,
+				}
+				resp, err := client.Get(vigilumAPIURL + "/api/defaults")
+				if err == nil {
+					if resp.StatusCode == http.StatusOK {
+						var defaults struct {
+							DefaultRetries       int    `json:"default_retries"`
+							DefaultRetryInterval string `json:"default_retry_interval"`
+						}
+						if json.NewDecoder(resp.Body).Decode(&defaults) == nil {
+							defaultsMu.Lock()
+							cachedDefaultRetries = defaults.DefaultRetries
+							cachedDefaultRetryInterval = defaults.DefaultRetryInterval
+							defaultsFetched = true
+							retriesVal = cachedDefaultRetries
+							retryIntervalVal = cachedDefaultRetryInterval
+							defaultsMu.Unlock()
+							slog.Info("Успешно получены и кэшированы параметры по умолчанию от демона Vigilum (при создании пустой конфигурации)", "default_retries", retriesVal, "default_retry_interval", retryIntervalVal)
+						}
+					}
+					resp.Body.Close()
+				}
+			}
+
 			// Если файл не существует, возвращаем пустую конфигурацию.
 			return &Config{
 				Services:             []ServiceConfig{},
-				DefaultRetries:       defaultRetries,
-				DefaultRetryInterval: defaultRetryInterval,
+				DefaultRetries:       retriesVal,
+				DefaultRetryInterval: retryIntervalVal,
 			}, nil
 		}
 		return nil, err
@@ -579,9 +624,45 @@ func readConfigFile() (*Config, error) {
 		return nil, err
 	}
 
+	// Определяем значения по умолчанию
+	retriesVal := defaultRetries
+	retryIntervalVal := defaultRetryInterval
+
+	defaultsMu.Lock()
+	if defaultsFetched {
+		retriesVal = cachedDefaultRetries
+		retryIntervalVal = cachedDefaultRetryInterval
+		defaultsMu.Unlock()
+	} else {
+		defaultsMu.Unlock()
+		client := http.Client{
+			Timeout: 200 * time.Millisecond,
+		}
+		resp, err := client.Get(vigilumAPIURL + "/api/defaults")
+		if err == nil {
+			if resp.StatusCode == http.StatusOK {
+				var defaults struct {
+					DefaultRetries       int    `json:"default_retries"`
+					DefaultRetryInterval string `json:"default_retry_interval"`
+				}
+				if json.NewDecoder(resp.Body).Decode(&defaults) == nil {
+					defaultsMu.Lock()
+					cachedDefaultRetries = defaults.DefaultRetries
+					cachedDefaultRetryInterval = defaults.DefaultRetryInterval
+					defaultsFetched = true
+					retriesVal = cachedDefaultRetries
+					retryIntervalVal = cachedDefaultRetryInterval
+					defaultsMu.Unlock()
+					slog.Info("Успешно получены и кэшированы параметры по умолчанию от демона Vigilum", "default_retries", retriesVal, "default_retry_interval", retryIntervalVal)
+				}
+			}
+			resp.Body.Close()
+		}
+	}
+
 	// Устанавливаем значения по умолчанию из переменных окружения
-	cfg.DefaultRetries = defaultRetries
-	cfg.DefaultRetryInterval = defaultRetryInterval
+	cfg.DefaultRetries = retriesVal
+	cfg.DefaultRetryInterval = retryIntervalVal
 
 	return &cfg, nil
 }

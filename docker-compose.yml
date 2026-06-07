@@ -13,7 +13,7 @@ services:
       - POLL_INTERVAL=5s
       - LOG_LEVEL=INFO
       - DEFAULT_RETRIES=3
-      - DEFAULT_RETRY_INTERVAL=1s
+      - DEFAULT_RETRY_INTERVAL=2s
       - NOTIFY_BOT_URL=http://host.docker.internal:18041/notify
       - TZ=Europe/Moscow
     ports:
