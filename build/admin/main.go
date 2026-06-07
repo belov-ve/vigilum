@@ -54,8 +54,10 @@ type ServiceConfig struct {
 
 // Глобальная структура YAML-файла конфигурации.
 type Config struct {
-	Templates TemplatesConfig `yaml:"templates" json:"templates"`
-	Services  []ServiceConfig `yaml:"services" json:"services"`
+	Templates            TemplatesConfig `yaml:"templates" json:"templates"`
+	Services             []ServiceConfig `yaml:"services" json:"services"`
+	DefaultRetries       int             `yaml:"-" json:"default_retries"`       // Значение по умолчанию для количества попыток
+	DefaultRetryInterval string          `yaml:"-" json:"default_retry_interval"` // Значение по умолчанию для паузы перепроверки
 }
 
 // Структура для быстрого включения/отключения сервиса через API.
@@ -81,6 +83,10 @@ var (
 
 	// URL-адрес API демона Vigilum для получения текущих статусов здоровья.
 	vigilumAPIURL string
+
+	// Значения по умолчанию для количества попыток и паузы, считываемые при запуске.
+	defaultRetries       int
+	defaultRetryInterval string
 )
 
 func main() {
@@ -105,6 +111,17 @@ func main() {
 	vigilumAPIURL = os.Getenv("VIGILUM_API_URL")
 	if vigilumAPIURL == "" {
 		vigilumAPIURL = "http://vigilum:8080"
+	}
+
+	// Считываем значения по умолчанию для отображения в плейсхолдерах веб-интерфейса.
+	defaultRetries = 3
+	if defaultRetriesStr := os.Getenv("DEFAULT_RETRIES"); defaultRetriesStr != "" {
+		fmt.Sscanf(defaultRetriesStr, "%d", &defaultRetries)
+	}
+
+	defaultRetryInterval = os.Getenv("DEFAULT_RETRY_INTERVAL")
+	if defaultRetryInterval == "" {
+		defaultRetryInterval = "2s"
 	}
 
 	// Считываем логин и пароль администратора.
@@ -548,7 +565,11 @@ func readConfigFile() (*Config, error) {
 	if err != nil {
 		if os.IsNotExist(err) {
 			// Если файл не существует, возвращаем пустую конфигурацию.
-			return &Config{Services: []ServiceConfig{}}, nil
+			return &Config{
+				Services:             []ServiceConfig{},
+				DefaultRetries:       defaultRetries,
+				DefaultRetryInterval: defaultRetryInterval,
+			}, nil
 		}
 		return nil, err
 	}
@@ -557,6 +578,10 @@ func readConfigFile() (*Config, error) {
 	if err := yaml.Unmarshal(fileBytes, &cfg); err != nil {
 		return nil, err
 	}
+
+	// Устанавливаем значения по умолчанию из переменных окружения
+	cfg.DefaultRetries = defaultRetries
+	cfg.DefaultRetryInterval = defaultRetryInterval
 
 	return &cfg, nil
 }

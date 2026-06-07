@@ -285,7 +285,7 @@ version: '3.8'
 services:
   # Основной демон мониторинга Vigilum
   vigilum:
-    image: vigilum:1.3.1
+    image: vigilum:1.3.2
     container_name: vigilum
     restart: unless-stopped
     volumes:
@@ -303,7 +303,7 @@ services:
 
   # Панель управления конфигурациями Vigilum Admin
   vigilum-admin:
-    image: vigilum-admin:1.3.1
+    image: vigilum-admin:1.3.2
     container_name: vigilum-admin
     restart: unless-stopped
     volumes:
@@ -448,3 +448,8 @@ curl http://localhost:18080/health
      {"status":"healthy","time":"2026-05-29T10:00:00+03:00"}
      ```
 
+### Интерфейс панели управления (Vigilum Admin)
+
+Ниже представлен скриншот интерфейса панели управления конфигурацией сервисов:
+
+![Интерфейс Vigilum Admin](img1.png)
