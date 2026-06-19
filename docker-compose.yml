@@ -59,7 +59,7 @@ services:
         max-file: "3"
     labels:
       - "autoheal=true"
-	
+
   # Эмулятор бота для тестирования отправки оповещений локально
   mock-bot:
     image: golang:1.26-alpine
