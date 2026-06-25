@@ -4,7 +4,7 @@ services:
     build:
       context: .
       dockerfile: build/Dockerfile
-    image: vigilum:1.3.2
+    image: vigilum:1.3.3
     container_name: vigilum
     volumes:
       - ./config.yaml:/app/config.yaml
@@ -35,7 +35,7 @@ services:
     build:
       context: .
       dockerfile: build/admin/Dockerfile
-    image: vigilum-admin:1.3.2
+    image: vigilum-admin:1.3.3
     container_name: vigilum-admin
     volumes:
       - ./config.yaml:/app/config.yaml
@@ -59,7 +59,7 @@ services:
         max-file: "3"
     labels:
       - "autoheal=true"
-	
+
   # Эмулятор бота для тестирования отправки оповещений локально
   mock-bot:
     image: golang:1.26-alpine

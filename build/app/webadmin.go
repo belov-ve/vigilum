@@ -47,6 +47,12 @@ type SystemStatusResponse struct {
 	} `json:"status"`
 }
 
+// Вспомогательная структура для отслеживания истории переходов состояний подсервисов.
+type SubServiceHistory struct {
+	LastPendingState string // "running", "stopped", "failed"
+	ConsecutiveCount int
+}
+
 // Внутреннее состояние конкретного клиента Webadmin.
 type WebadminClient struct {
 	mu           sync.Mutex
@@ -56,6 +62,7 @@ type WebadminClient struct {
 	password     string
 	httpClient   *http.Client
 	subStates    map[string]WebadminConfigItem
+	subHistories map[string]SubServiceHistory // История стабилизации физических состояний подсервисов
 	initialized  bool
 }
 
@@ -86,12 +93,13 @@ func getWebadminClient(svc ServiceConfig) *WebadminClient {
 		}
 
 		client = &WebadminClient{
-			id:         svc.ID,
-			targetURL:  svc.Target,
-			username:   svc.Username,
-			password:   svc.Password,
-			httpClient: httpClient,
-			subStates:  make(map[string]WebadminConfigItem),
+			id:           svc.ID,
+			targetURL:    svc.Target,
+			username:     svc.Username,
+			password:     svc.Password,
+			httpClient:   httpClient,
+			subStates:    make(map[string]WebadminConfigItem),
+			subHistories: make(map[string]SubServiceHistory),
 		}
 		clientsRegistry[svc.ID] = client
 		slog.Debug("Инициализирован новый клиент Webadmin", "id", svc.ID, "target", svc.Target)
@@ -136,7 +144,7 @@ func checkWebadmin(ctx context.Context, safeConfig *SafeConfig, svc ServiceConfi
 	}
 
 	// 3. Анализируем состояние подсервисов и отправляем оповещения при их изменении.
-	client.processSubServices(safeConfig, svc.Name, items)
+	client.processSubServices(safeConfig, svc, items)
 
 	return nil
 }
@@ -281,10 +289,23 @@ func (c *WebadminClient) fetchConfigs(ctx context.Context) ([]WebadminConfigItem
 	return res.Items, nil
 }
 
-// Сравнивает текущие состояния внутренних подсервисов с предыдущими и отправляет уведомления.
-func (c *WebadminClient) processSubServices(safeConfig *SafeConfig, parentName string, items []WebadminConfigItem) {
+// Сравнивает текущие состояния внутренних подсервисов с предыдущими и отправляет уведомления с учетом стабилизации.
+func (c *WebadminClient) processSubServices(safeConfig *SafeConfig, svc ServiceConfig, items []WebadminConfigItem) {
+	parentName := svc.Name
 	// Логируем количество полученных подсервисов с уровнем DEBUG для предотвращения спама в INFO.
 	slog.Debug("Retrieved subservices list from Webadmin API", "parent", parentName, "count", len(items))
+
+	// Определяем порог стабилизации (количество проверок).
+	// Порог берется из индивидуальных настроек retries сервиса, либо из глобального DEFAULT_RETRIES.
+	stabilizationThreshold := 3 // значение по умолчанию
+	if svc.Retries != nil {
+		stabilizationThreshold = *svc.Retries
+	} else {
+		stabilizationThreshold = safeConfig.Get().Global.DefaultRetries
+	}
+	if stabilizationThreshold < 1 {
+		stabilizationThreshold = 1
+	}
 
 	currentMap := make(map[string]WebadminConfigItem)
 	for _, item := range items {
@@ -326,6 +347,7 @@ func (c *WebadminClient) processSubServices(safeConfig *SafeConfig, parentName s
 			// Присылаем оповещение об удалении подсервиса из панели независимо от его статуса автозапуска.
 			_ = SendAlert(safeConfig, AlertDisabled, fullName, "Removed from Webadmin panel")
 			delete(c.subStates, sName)
+			delete(c.subHistories, sName) // Чистим историю для удаленного подсервиса
 			continue
 		}
 
@@ -348,66 +370,122 @@ func (c *WebadminClient) processSubServices(safeConfig *SafeConfig, parentName s
 		oldStopped := oldItem.Status.ActiveState == "inactive" || oldItem.Status.SubState == "dead"
 		newStopped := newItem.Status.ActiveState == "inactive" || newItem.Status.SubState == "dead"
 
-		// Состояние Failed (служба находится в состоянии ошибки / сбоя / автоматического перезапуска)
-		oldFailed := oldItem.Status.ActiveState == "failed" || oldItem.Status.SubState == "failed" ||
-			(oldItem.Status.ActiveState == "activating" && oldItem.Status.SubState == "auto-restart")
-		newFailed := newItem.Status.ActiveState == "failed" || newItem.Status.SubState == "failed" ||
-			(newItem.Status.ActiveState == "activating" && newItem.Status.SubState == "auto-restart")
 
-		// 1. Отслеживаем физические переходы состояния службы и отправляем алерты
-		if !oldRunning && newRunning {
-			// Переход в Running (служба успешно запустилась из любого другого состояния)
-			if newItem.Enabled {
-				// Если автозапуск включен, это штатное восстановление службы (UP)
-				slog.Info("Внутренний сервис Webadmin восстановил работу (запущен)", "parent", parentName, "service", newItem.Name)
-				_ = SendAlert(safeConfig, AlertUp, fullName, "")
-			} else {
-				// Если автозапуск выключен, это запуск администратором вручную (ENABLED)
-				slog.Info("Внутренний сервис Webadmin запущен вручную", "parent", parentName, "service", newItem.Name)
-				_ = SendAlert(safeConfig, AlertWebadminEnabled, fullName, "Service started (manual)")
-			}
-		} else if (oldRunning || oldFailed) && newStopped {
-			// Переход в Stopped (служба была выключена или переведена в inactive/dead)
-			if newItem.Enabled {
-				// Если автозапуск включен, но служба физически остановилась — это сбой (DOWN)
-				errDesc := fmt.Sprintf("active_state=%s, sub_state=%s", newItem.Status.ActiveState, newItem.Status.SubState)
-				slog.Warn("Внутренний сервис Webadmin остановлен при включенном автозапуске", "parent", parentName, "service", newItem.Name, "details", errDesc)
+		// Классифицируем старое и новое состояние для стабилизации.
+		var lastFixedState string
+		if oldRunning {
+			lastFixedState = "running"
+		} else if oldStopped {
+			lastFixedState = "stopped"
+		} else {
+			lastFixedState = "failed"
+		}
+
+		var currentState string
+		if newRunning {
+			currentState = "running"
+		} else if newStopped {
+			currentState = "stopped"
+		} else {
+			currentState = "failed"
+		}
+
+		// Выполняем проверку стабилизации.
+		if currentState == lastFixedState {
+			// Состояние совпадает с последним зафиксированным, сбрасываем историю ожидания перехода.
+			delete(c.subHistories, sName)
+
+			// Отслеживаем включение автозапуска для уже лежащей службы (если изменился только флаг Enabled).
+			if !oldItem.Enabled && newItem.Enabled && !newRunning {
+				errDesc := fmt.Sprintf("active_state=%s, sub_state=%s (detected on autostart enable)", newItem.Status.ActiveState, newItem.Status.SubState)
+				slog.Warn("Внутренний сервис Webadmin лежит при включении автозапуска", "parent", parentName, "service", newItem.Name, "details", errDesc)
 				_ = SendAlert(safeConfig, AlertDown, fullName, errDesc)
-			} else {
-				// Если автозапуск выключен, это штатное отключение/остановка администратором (DISABLED)
-				slog.Info("Внутренний сервис Webadmin штатно остановлен/выключен", "parent", parentName, "service", newItem.Name)
-				_ = SendAlert(safeConfig, AlertWebadminDisabled, fullName, "Service stopped (disabled)")
 			}
-		} else if (oldRunning || oldStopped) && newFailed {
-			// Переход в Failed (служба упала в сбой или ушла в цикл автоперезапуска из рабочего/остановленного состояния)
-			if newItem.Enabled {
-				// Если автозапуск включен, сбой считается критической аварией (DOWN)
-				errDesc := fmt.Sprintf("active_state=%s, sub_state=%s", newItem.Status.ActiveState, newItem.Status.SubState)
-				slog.Warn("Внутренний сервис Webadmin перешел в аварийное состояние (сбой)", "parent", parentName, "service", newItem.Name, "details", errDesc)
-				_ = SendAlert(safeConfig, AlertDown, fullName, errDesc)
-			} else {
-				// Если автозапуск выключен, сбой не логируется как критический аварийный DOWN.
-				// Однако, если служба до этого физически работала (oldRunning), мы отправляем предупреждение об остановке (DISABLED)
-				if oldRunning {
-					slog.Info("Внутренний сервис Webadmin отключен (ушел в сбой при выключенном автозапуске)", "parent", parentName, "service", newItem.Name)
-					_ = SendAlert(safeConfig, AlertWebadminDisabled, fullName, "Service stopped (disabled/failed)")
+
+			// Обновляем метаданные в локальном кэше (например, Enabled)
+			c.subStates[sName] = newItem
+		} else {
+			// Состояние изменилось, ведем учет последовательных совпадений нового состояния.
+			history, hasHistory := c.subHistories[sName]
+			if !hasHistory || history.LastPendingState != currentState {
+				history = SubServiceHistory{
+					LastPendingState: currentState,
+					ConsecutiveCount: 1,
 				}
+			} else {
+				history.ConsecutiveCount++
+			}
+
+			slog.Debug("Физическое состояние подсервиса Webadmin изменилось, ожидает стабилизации",
+				"service", newItem.Name,
+				"from", lastFixedState,
+				"to", currentState,
+				"count", history.ConsecutiveCount,
+				"threshold", stabilizationThreshold)
+
+			if history.ConsecutiveCount >= stabilizationThreshold {
+				// Состояние стабилизировалось! Отправляем соответствующие алерты.
+				
+				// 1. Отслеживаем физические переходы состояния службы и отправляем алерты
+				if lastFixedState != "running" && currentState == "running" {
+					// Переход в Running (служба успешно запустилась из любого другого состояния)
+					if newItem.Enabled {
+						// Если автозапуск включен, это штатное восстановление службы (UP)
+						slog.Info("Внутренний сервис Webadmin восстановил работу (запущен)", "parent", parentName, "service", newItem.Name)
+						_ = SendAlert(safeConfig, AlertUp, fullName, "")
+					} else {
+						// Если автозапуск выключен, это запуск администратором вручную (ENABLED)
+						slog.Info("Внутренний сервис Webadmin запущен вручную", "parent", parentName, "service", newItem.Name)
+						_ = SendAlert(safeConfig, AlertWebadminEnabled, fullName, "Service started (manual)")
+					}
+				} else if (lastFixedState == "running" || lastFixedState == "failed") && currentState == "stopped" {
+					// Переход в Stopped (служба была выключена или переведена в inactive/dead)
+					if newItem.Enabled {
+						// Если автозапуск включен, но служба физически остановилась — это сбой (DOWN)
+						errDesc := fmt.Sprintf("active_state=%s, sub_state=%s", newItem.Status.ActiveState, newItem.Status.SubState)
+						slog.Warn("Внутренний сервис Webadmin остановлен при включенном автозапуске", "parent", parentName, "service", newItem.Name, "details", errDesc)
+						_ = SendAlert(safeConfig, AlertDown, fullName, errDesc)
+					} else {
+						// Если автозапуск выключен, это штатное отключение/остановка администратором (DISABLED)
+						slog.Info("Внутренний сервис Webadmin штатно остановлен/выключен", "parent", parentName, "service", newItem.Name)
+						_ = SendAlert(safeConfig, AlertWebadminDisabled, fullName, "Service stopped (disabled)")
+					}
+				} else if (lastFixedState == "running" || lastFixedState == "stopped") && currentState == "failed" {
+					// Переход в Failed (служба упала в сбой или ушла в цикл автоперезапуска из рабочего/остановленного состояния)
+					if newItem.Enabled {
+						// Если автозапуск включен, сбой считается критической аварией (DOWN)
+						errDesc := fmt.Sprintf("active_state=%s, sub_state=%s", newItem.Status.ActiveState, newItem.Status.SubState)
+						slog.Warn("Внутренний сервис Webadmin перешел в аварийное состояние (сбой)", "parent", parentName, "service", newItem.Name, "details", errDesc)
+						_ = SendAlert(safeConfig, AlertDown, fullName, errDesc)
+					} else {
+						// Если автозапуск выключен, сбой не логируется как критический аварийный DOWN.
+						// Однако, если служба до этого физически работала (oldRunning), мы отправляем предупреждение об остановке (DISABLED)
+						if lastFixedState == "running" {
+							slog.Info("Внутренний сервис Webadmin отключен (ушел в сбой при выключенном автозапуске)", "parent", parentName, "service", newItem.Name)
+							_ = SendAlert(safeConfig, AlertWebadminDisabled, fullName, "Service stopped (disabled/failed)")
+						}
+					}
+				}
+
+				// 2. Дополнительно отслеживаем включение автозапуска для уже лежащей службы
+				if !oldItem.Enabled && newItem.Enabled && currentState != "running" {
+					errDesc := fmt.Sprintf("active_state=%s, sub_state=%s (detected on autostart enable)", newItem.Status.ActiveState, newItem.Status.SubState)
+					slog.Warn("Внутренний сервис Webadmin лежит при включении автозапуска", "parent", parentName, "service", newItem.Name, "details", errDesc)
+					_ = SendAlert(safeConfig, AlertDown, fullName, errDesc)
+				}
+
+				// Обновляем зафиксированное состояние и чистим историю.
+				c.subStates[sName] = newItem
+				delete(c.subHistories, sName)
+			} else {
+				// Состояние изменилось, но еще не стабилизировалось. Сохраняем историю ожидания.
+				c.subHistories[sName] = history
 			}
 		}
-
-		// 2. Отслеживаем включение автозапуска для уже лежащей службы
-		if !oldItem.Enabled && newItem.Enabled && !newRunning {
-			// Автозапуск был включен, но служба не работает — отправляем алерт DOWN
-			errDesc := fmt.Sprintf("active_state=%s, sub_state=%s (detected on autostart enable)", newItem.Status.ActiveState, newItem.Status.SubState)
-			slog.Warn("Внутренний сервис Webadmin лежит при включении автозапуска", "parent", parentName, "service", newItem.Name, "details", errDesc)
-			_ = SendAlert(safeConfig, AlertDown, fullName, errDesc)
-		}
-
-		// Обновляем сохраненный статус в локальном кэше состояний
-		c.subStates[sName] = newItem
 	}
 
-	// 2. Проверяем новые добавленные службы и отправляем оповещения по их текущему состоянию
+	// 2. Проверяем новые добавленные службы и отправляем оповещения по их текущему состоянию.
+	// При первом обнаружении новой службы её статус фиксируется мгновенно во избежание задержки.
 	for sName, newItem := range currentMap {
 		if _, exists := c.subStates[sName]; !exists {
 			fullName := fmt.Sprintf("%s / %s (%s)", parentName, newItem.Name, newItem.ServiceName)
