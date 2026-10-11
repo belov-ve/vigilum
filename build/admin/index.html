@@ -4,46 +4,59 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Vigilum Admin Panel</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
+        /* Определение фиолетово-индиговой цветовой палитры и переменных оформления */
         :root {
-            --bg-color: #0f172a;
-            --panel-bg: #1e293b;
-            --panel-border: #334155;
-            --text-color: #f1f5f9;
-            --text-muted: #94a3b8;
-            --primary: #38bdf8;
-            --primary-hover: #7dd3fc;
-            --success: #4ade80;
-            --warning: #fbbf24;
-            --danger: #f87171;
-            --card-bg: #1e293b;
-            --accent: #818cf8;
-            --accent-glow: rgba(129, 140, 248, 0.15);
+            --bg-color: #0b0f19;
+            --panel-bg: rgba(17, 24, 39, 0.7);
+            --panel-border: rgba(255, 255, 255, 0.08);
+            --text-color: #f3f4f6;
+            --text-muted: #9ca3af;
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --card-bg: rgba(31, 41, 55, 0.4);
+            --accent: #3b82f6;
+            --accent-glow: rgba(59, 130, 246, 0.15);
         }
 
+        /* Сохранение компактного базового размера шрифта v1.4.0 */
         html {
             font-size: 14px;
         }
 
+        /* Использование фирменного шрифта Outfit для элементов UI */
         * {
             box-sizing: border-box;
             margin: 0;
             padding: 0;
-            font-family: system-ui, -apple-system, sans-serif;
+            font-family: 'Outfit', sans-serif;
             scrollbar-width: thin;
             scrollbar-color: var(--panel-border) transparent;
         }
 
+        /* Настройка фонового радиального градиента и отображения страницы */
         body {
             background-color: var(--bg-color);
             color: var(--text-color);
             min-height: 100vh;
             display: flex;
             flex-direction: column;
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.1) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(59, 130, 246, 0.1) 0px, transparent 50%);
+            background-attachment: fixed;
         }
 
+        /* Шапка веб-панели с размытием заднего фона и сохранением компактной высоты v1.4.0 */
         header {
-            background: var(--panel-bg);
+            background: rgba(11, 15, 25, 0.8);
+            backdrop-filter: blur(12px);
             border-bottom: 1px solid var(--panel-border);
             padding: 0.6rem 1.25rem;
             position: sticky;
@@ -159,7 +172,7 @@
         .input-control:focus {
             outline: none;
             border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
         }
 
         .input-control:disabled {
@@ -192,6 +205,7 @@
             opacity: 0.85;
         }
 
+        /* Сохранение компактных габаритов кнопок v1.4.0 с возвратом оригинальных цветов v1.3.x */
         .btn {
             display: inline-flex;
             align-items: center;
@@ -209,42 +223,42 @@
 
         .btn-primary {
             background: var(--primary);
-            color: #0f172a;
+            color: white;
         }
 
         .btn-primary:hover {
             background: var(--primary-hover);
+            box-shadow: 0 0 15px rgba(99, 102, 241, 0.4);
         }
 
         .btn-secondary {
-            background: transparent;
-            color: var(--text-muted);
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--text-color);
             border: 1px solid var(--panel-border);
         }
 
         .btn-secondary:hover {
-            background: rgba(255, 255, 255, 0.05);
-            color: var(--text-color);
+            background: rgba(255, 255, 255, 0.15);
         }
 
         .btn-danger {
             background: rgba(239, 68, 68, 0.15);
-            color: #f87171;
+            color: var(--danger);
             border: 1px solid rgba(239, 68, 68, 0.3);
         }
 
         .btn-danger:hover {
-            background: #ef4444;
-            color: #ffffff;
+            background: var(--danger);
+            color: white;
         }
 
         .btn-success {
             background: var(--success);
-            color: #0f172a;
+            color: white;
         }
 
         .btn-success:hover {
-            background: #86efac;
+            background: #059669;
         }
 
         .btn-icon {
@@ -283,8 +297,8 @@
 
         .service-card:hover {
             transform: translateY(-4px);
-            border-color: rgba(56, 189, 248, 0.3);
-            box-shadow: 0 12px 30px -10px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(56, 189, 248, 0.1);
+            border-color: rgba(99, 102, 241, 0.3);
+            box-shadow: 0 12px 30px -10px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(99, 102, 241, 0.1);
         }
 
         .service-card.disabled {
@@ -687,12 +701,13 @@
 
         .btn-view:hover {
             color: var(--text-color);
-            background: rgba(255, 255, 255, 0.05);
+            background: rgba(255, 255, 255, 0.08);
         }
 
         .btn-view.active {
             background: var(--primary);
-            color: #0f172a;
+            color: white;
+            box-shadow: 0 2px 8px rgba(99, 102, 241, 0.35);
         }
 
         /* Table view styles */
@@ -949,7 +964,7 @@
         <div class="logo-container">
             <span class="logo-icon">V</span>
             <h1 class="logo-title">Vigilum Admin</h1>
-            <span class="logo-badge">v1.4.0</span>
+            <span class="logo-badge">v1.4.1</span>
         </div>
         <button class="btn btn-success" id="btn-save-all" onclick="saveAllConfig()">
             Save Configuration
@@ -1077,12 +1092,12 @@
         </footer>
     </div>
 
-    <!-- Login Screen Overlay -->
-    <div class="login-overlay" id="login-overlay">
+    <!-- Login Screen Overlay (активен по умолчанию до проверки авторизации) -->
+    <div class="login-overlay active" id="login-overlay">
         <div class="login-box glass-panel">
             <div class="login-logo">
                 <span class="logo-icon">V</span>
-                <h2 style="margin:0; font-weight:500;">Vigilum Admin</h2>
+                <h2 style="margin:0; font-family:'Outfit', sans-serif; font-weight:600;">Vigilum Admin</h2>
             </div>
             <p class="login-subtitle">Введите учетные данные для доступа к панели</p>
             <form id="login-form" onsubmit="performLogin(event)">
@@ -1244,6 +1259,22 @@
         let isDirty = false;
         // Current text filter for services list (empty = show all)
         let filterQuery = '';
+        // Переменная для отслеживания таймера фонового опроса статусов
+        let statusIntervalId = null;
+
+        function startStatusPolling() {
+            if (!statusIntervalId) {
+                fetchStatuses();
+                statusIntervalId = setInterval(fetchStatuses, 5000);
+            }
+        }
+
+        function stopStatusPolling() {
+            if (statusIntervalId) {
+                clearInterval(statusIntervalId);
+                statusIntervalId = null;
+            }
+        }
 
         // On Page Load
         document.addEventListener("DOMContentLoaded", () => {
@@ -1252,10 +1283,6 @@
             // Восстанавливаем выбранный режим сортировки в выпадающем списке
             document.getElementById('sort-select').value = sortMode;
             fetchConfig();
-            
-            // Запуск периодического опроса статусов здоровья контролируемых сервисов
-            fetchStatuses();
-            setInterval(fetchStatuses, 5000);
         });
 
         function showToast(message, type = 'info') {
@@ -1285,6 +1312,7 @@
         }
 
         function showLoginScreen() {
+            stopStatusPolling();
             document.getElementById('login-overlay').classList.add('active');
             document.getElementById('login-error').style.display = 'none';
         }
@@ -1331,14 +1359,12 @@
             if (!confirm('Вы уверены, что хотите выйти из системы?')) return;
             try {
                 const response = await fetch('/api/auth/logout', { method: 'POST' });
-                if (response.ok) {
-                    showToast('Вы вышли из системы', 'info');
-                    showLoginScreen();
-                } else {
-                    throw new Error('Ошибка при выходе');
-                }
+                showToast('Вы вышли из системы', 'info');
             } catch (err) {
-                showToast(err.message, 'error');
+                console.warn('Ошибка сети при выходе:', err);
+                showToast('Вы вышли из системы', 'info');
+            } finally {
+                showLoginScreen();
             }
         }
 
@@ -1351,16 +1377,30 @@
                 }
                 if (!response.ok) throw new Error('Не удалось скачать конфигурацию');
                 
+                // Извлекаем имя файла из заголовка Content-Disposition или генерируем локально
+                let filename = '';
+                const disposition = response.headers.get('Content-Disposition');
+                if (disposition && disposition.includes('filename=')) {
+                    const match = disposition.match(/filename="?([^";]+)"?/);
+                    if (match && match[1]) filename = match[1];
+                }
+                if (!filename) {
+                    const now = new Date();
+                    const pad = n => String(n).padStart(2, '0');
+                    const ts = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`;
+                    filename = `config-vigilum-${ts}.yaml`;
+                }
+
                 const blob = await response.blob();
                 const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = 'config.yaml';
+                a.download = filename;
                 document.body.appendChild(a);
                 a.click();
                 a.remove();
                 window.URL.revokeObjectURL(url);
-                showToast('Конфигурация успешно экспортирована', 'success');
+                showToast(`Конфигурация экспортирована в ${filename}`, 'success');
             } catch (err) {
                 showToast(err.message, 'error');
             }
@@ -1426,6 +1466,7 @@
                 }
 
                 hideLoginScreen();
+                startStatusPolling();
                 currentConfig = await response.json();
                 
                 // Set templates
@@ -1442,11 +1483,15 @@
             }
         }
 
-        // Фоновый опрос статусов здоровья сервисов из API
+        // Фоновый опрос статусов здоровья сервисов из API с задержкой 2.5с по AbortController
         async function fetchStatuses() {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 2500);
+
             try {
-                const response = await fetch('/api/statuses');
+                const response = await fetch('/api/statuses', { signal: controller.signal });
                 if (response.status === 401) {
+                    showLoginScreen();
                     return; // Игнорируем фоновые запросы при неавторизованной сессии
                 }
                 if (!response.ok) throw new Error('Failed to fetch statuses');
@@ -1475,13 +1520,19 @@
                     renderSubservices();
                 }
             } catch (err) {
-                console.warn('Ошибка получения статусов сервисов:', err);
+                if (err.name === 'AbortError') {
+                    console.warn('Запрос статусов отменен по клиентскому таймауту 2.5с (предотвращение блокировки UI)');
+                } else {
+                    console.warn('Ошибка получения статусов сервисов:', err);
+                }
                 // При сбоях связи очищаем локальный кэш, переводя маркеры в режим "Проверка" (Unknown)
                 serviceStatuses = {};
                 updateDOMStatuses();
                 if (currentWebadminId) {
                     renderSubservices();
                 }
+            } finally {
+                clearTimeout(timeoutId);
             }
         }
 

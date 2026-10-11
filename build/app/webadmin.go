@@ -138,6 +138,26 @@ func getWebadminClient(svc ServiceConfig) *WebadminClient {
 	return client
 }
 
+// Вспомогательная структура для откладывания отправки алертов вне мьютекса
+type PendingAlert struct {
+	AlertType   AlertType
+	ServiceName string
+	ErrMsg      string
+}
+
+// Проверяет, является ли ответ сервера HTML-страницей (признак перехвата провайдером / Captive Portal / ошибки сети)
+func isHTMLResponse(resp *http.Response, body []byte) bool {
+	ct := resp.Header.Get("Content-Type")
+	if strings.Contains(strings.ToLower(ct), "text/html") {
+		return true
+	}
+	trimmed := strings.TrimSpace(string(body))
+	if strings.HasPrefix(trimmed, "<!DOCTYPE") || strings.HasPrefix(trimmed, "<html") || strings.HasPrefix(trimmed, "<HTML") {
+		return true
+	}
+	return false
+}
+
 // Главная функция проверки работоспособности Webadmin, вызываемая из checker.go.
 func checkWebadmin(ctx context.Context, safeConfig *SafeConfig, svc ServiceConfig) error {
 	client := getWebadminClient(svc)
@@ -155,11 +175,15 @@ func checkWebadmin(ctx context.Context, safeConfig *SafeConfig, svc ServiceConfi
 		return fmt.Errorf("failed to get Webadmin configurations: %w", err)
 	}
 
-	// 3. Анализируем состояние подсервисов и отправляем оповещения при их изменении.
-	// Блокируем мьютекс клиента только на время обновления состояния подсервисов в памяти.
+	// 3. Анализируем состояние подсервисов под мьютексом только для быстрой работы с памятью.
 	client.mu.Lock()
-	client.processSubServices(safeConfig, svc, items)
+	alertsToSend := client.processSubServices(safeConfig, svc, items)
 	client.mu.Unlock()
+
+	// 4. Отправляем алерты БЕЗ удержания мьютекса client.mu для предотвращения блокировки /api/statuses
+	for _, alert := range alertsToSend {
+		_ = SendAlert(safeConfig, alert.AlertType, alert.ServiceName, alert.ErrMsg)
+	}
 
 	return nil
 }
@@ -186,10 +210,17 @@ func (c *WebadminClient) checkSystemStatus(ctx context.Context) error {
 		return err
 	}
 
-	// Если сервер возвращает 401 Unauthorized или перенаправляет (302/303/307) на страницу входа,
-	// значит это новая версия Webadmin, требующая авторизации. Выполняем повторный вход и пробуем снова.
-	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusFound ||
-		resp.StatusCode == http.StatusSeeOther || resp.StatusCode == http.StatusTemporaryRedirect {
+	// Проверяем, не является ли ответ провайдерским перенаправлением на HTML-заглушку (Captive Portal)
+	if resp.StatusCode == http.StatusFound || resp.StatusCode == http.StatusSeeOther || resp.StatusCode == http.StatusTemporaryRedirect {
+		ct := resp.Header.Get("Content-Type")
+		if strings.Contains(strings.ToLower(ct), "text/html") {
+			resp.Body.Close()
+			return fmt.Errorf("network/provider redirect error: endpoint returned HTML page (%s) instead of JSON (Captive Portal detected)", resp.Status)
+		}
+	}
+
+	// Если сервер возвращает 401 Unauthorized, значит это новая версия Webadmin, требующая авторизации. Выполняем повторный вход.
+	if resp.StatusCode == http.StatusUnauthorized {
 		resp.Body.Close()
 		slog.Warn("Webadmin system status endpoint requires login, performing re-authorization...", "id", c.id, "status", resp.StatusCode)
 
@@ -216,6 +247,11 @@ func (c *WebadminClient) checkSystemStatus(ctx context.Context) error {
 	if err != nil {
 		// Возвращаем ошибку чтения ответа на английском языке.
 		return fmt.Errorf("failed to read system status response: %w", err)
+	}
+
+	// Проверяем, не вернил ли сервер HTML-страницу вместо JSON
+	if isHTMLResponse(resp, body) {
+		return fmt.Errorf("network/provider error: endpoint returned HTML page instead of JSON (Captive Portal detected)")
 	}
 
 	if err := json.Unmarshal(body, &sysStatus); err != nil {
@@ -325,6 +361,12 @@ func (c *WebadminClient) fetchConfigs(ctx context.Context) ([]WebadminConfigItem
 	// пробуем авторизоваться заново и повторить запрос.
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusFound ||
 		resp.StatusCode == http.StatusSeeOther || resp.StatusCode == http.StatusTemporaryRedirect {
+		ct := resp.Header.Get("Content-Type")
+		if strings.Contains(strings.ToLower(ct), "text/html") {
+			resp.Body.Close()
+			return nil, fmt.Errorf("network/provider redirect error: endpoint returned HTML page (%s) instead of JSON (Captive Portal detected)", resp.Status)
+		}
+
 		resp.Body.Close()
 		slog.Warn("Webadmin session expired or requires login, performing re-authorization...", "id", c.id, "status", resp.StatusCode)
 		
@@ -352,6 +394,11 @@ func (c *WebadminClient) fetchConfigs(ctx context.Context) ([]WebadminConfigItem
 		return nil, err
 	}
 
+	// Проверяем, не вернул ли провайдер HTML-страницу вместо JSON
+	if isHTMLResponse(resp, body) {
+		return nil, fmt.Errorf("network/provider error: endpoint returned HTML page instead of JSON (Captive Portal detected)")
+	}
+
 	var res WebadminConfigsResponse
 	if err := json.Unmarshal(body, &res); err != nil {
 		// Возвращаем ошибку парсинга конфигураций на английском языке.
@@ -361,8 +408,9 @@ func (c *WebadminClient) fetchConfigs(ctx context.Context) ([]WebadminConfigItem
 	return res.Items, nil
 }
 
-// Сравнивает текущие состояния внутренних подсервисов с предыдущими и отправляет уведомления с учетом стабилизации.
-func (c *WebadminClient) processSubServices(safeConfig *SafeConfig, svc ServiceConfig, items []WebadminConfigItem) {
+// Сравнивает текущие состояния внутренних подсервисов с предыдущими и накапливает список уведомлений для асинхронной отправки.
+func (c *WebadminClient) processSubServices(safeConfig *SafeConfig, svc ServiceConfig, items []WebadminConfigItem) []PendingAlert {
+	var alertsToSend []PendingAlert
 	parentName := svc.Name
 	// Логируем количество полученных подсервисов с уровнем DEBUG для предотвращения спама в INFO.
 	slog.Debug("Retrieved subservices list from Webadmin API", "parent", parentName, "count", len(items))
@@ -405,7 +453,7 @@ func (c *WebadminClient) processSubServices(safeConfig *SafeConfig, svc ServiceC
 		}
 		c.initialized = true
 		slog.Info("Инициализация начальных состояний подсервисов Webadmin успешно завершена", "id", c.id, "count", len(currentMap))
-		return
+		return alertsToSend
 	}
 
 	// 1. Проверяем изменения состояния и удаленные сервисы.
@@ -417,7 +465,7 @@ func (c *WebadminClient) processSubServices(safeConfig *SafeConfig, svc ServiceC
 			// Сервис был полностью удален из Webadmin.
 			slog.Info("Внутренний сервис Webadmin удален", "parent", parentName, "service", oldItem.Name, "service_name", sName)
 			// Присылаем оповещение об удалении подсервиса из панели независимо от его статуса автозапуска.
-			_ = SendAlert(safeConfig, AlertDisabled, fullName, "Removed from Webadmin panel")
+			alertsToSend = append(alertsToSend, PendingAlert{AlertType: AlertDisabled, ServiceName: fullName, ErrMsg: "Removed from Webadmin panel"})
 			delete(c.subStates, sName)
 			delete(c.subHistories, sName) // Чистим историю для удаленного подсервиса
 			continue
@@ -471,7 +519,7 @@ func (c *WebadminClient) processSubServices(safeConfig *SafeConfig, svc ServiceC
 			if !oldItem.Enabled && newItem.Enabled && !newRunning {
 				errDesc := fmt.Sprintf("active_state=%s, sub_state=%s (detected on autostart enable)", newItem.Status.ActiveState, newItem.Status.SubState)
 				slog.Warn("Внутренний сервис Webadmin лежит при включении автозапуска", "parent", parentName, "service", newItem.Name, "details", errDesc)
-				_ = SendAlert(safeConfig, AlertDown, fullName, errDesc)
+				alertsToSend = append(alertsToSend, PendingAlert{AlertType: AlertDown, ServiceName: fullName, ErrMsg: errDesc})
 			}
 
 			// Обновляем метаданные в локальном кэше (например, Enabled)
@@ -496,7 +544,7 @@ func (c *WebadminClient) processSubServices(safeConfig *SafeConfig, svc ServiceC
 				"threshold", stabilizationThreshold)
 
 			if history.ConsecutiveCount >= stabilizationThreshold {
-				// Состояние стабилизировалось! Отправляем соответствующие алерты.
+				// Состояние стабилизировалось! Накапливаем соответствующие алерты.
 				
 				// 1. Отслеживаем физические переходы состояния службы и отправляем алерты
 				if lastFixedState != "running" && currentState == "running" {
@@ -504,11 +552,11 @@ func (c *WebadminClient) processSubServices(safeConfig *SafeConfig, svc ServiceC
 					if newItem.Enabled {
 						// Если автозапуск включен, это штатное восстановление службы (UP)
 						slog.Info("Внутренний сервис Webadmin восстановил работу (запущен)", "parent", parentName, "service", newItem.Name)
-						_ = SendAlert(safeConfig, AlertUp, fullName, "")
+						alertsToSend = append(alertsToSend, PendingAlert{AlertType: AlertUp, ServiceName: fullName, ErrMsg: ""})
 					} else {
 						// Если автозапуск выключен, это запуск администратором вручную (ENABLED)
 						slog.Info("Внутренний сервис Webadmin запущен вручную", "parent", parentName, "service", newItem.Name)
-						_ = SendAlert(safeConfig, AlertWebadminEnabled, fullName, "Service started (manual)")
+						alertsToSend = append(alertsToSend, PendingAlert{AlertType: AlertWebadminEnabled, ServiceName: fullName, ErrMsg: "Service started (manual)"})
 					}
 				} else if (lastFixedState == "running" || lastFixedState == "failed") && currentState == "stopped" {
 					// Переход в Stopped (служба была выключена или переведена в inactive/dead)
@@ -516,11 +564,11 @@ func (c *WebadminClient) processSubServices(safeConfig *SafeConfig, svc ServiceC
 						// Если автозапуск включен, но служба физически остановилась — это сбой (DOWN)
 						errDesc := fmt.Sprintf("active_state=%s, sub_state=%s", newItem.Status.ActiveState, newItem.Status.SubState)
 						slog.Warn("Внутренний сервис Webadmin остановлен при включенном автозапуске", "parent", parentName, "service", newItem.Name, "details", errDesc)
-						_ = SendAlert(safeConfig, AlertDown, fullName, errDesc)
+						alertsToSend = append(alertsToSend, PendingAlert{AlertType: AlertDown, ServiceName: fullName, ErrMsg: errDesc})
 					} else {
 						// Если автозапуск выключен, это штатное отключение/остановка администратором (DISABLED)
 						slog.Info("Внутренний сервис Webadmin штатно остановлен/выключен", "parent", parentName, "service", newItem.Name)
-						_ = SendAlert(safeConfig, AlertWebadminDisabled, fullName, "Service stopped (disabled)")
+						alertsToSend = append(alertsToSend, PendingAlert{AlertType: AlertWebadminDisabled, ServiceName: fullName, ErrMsg: "Service stopped (disabled)"})
 					}
 				} else if (lastFixedState == "running" || lastFixedState == "stopped") && currentState == "failed" {
 					// Переход в Failed (служба упала в сбой или ушла в цикл автоперезапуска из рабочего/остановленного состояния)
@@ -528,13 +576,13 @@ func (c *WebadminClient) processSubServices(safeConfig *SafeConfig, svc ServiceC
 						// Если автозапуск включен, сбой считается критической аварией (DOWN)
 						errDesc := fmt.Sprintf("active_state=%s, sub_state=%s", newItem.Status.ActiveState, newItem.Status.SubState)
 						slog.Warn("Внутренний сервис Webadmin перешел в аварийное состояние (сбой)", "parent", parentName, "service", newItem.Name, "details", errDesc)
-						_ = SendAlert(safeConfig, AlertDown, fullName, errDesc)
+						alertsToSend = append(alertsToSend, PendingAlert{AlertType: AlertDown, ServiceName: fullName, ErrMsg: errDesc})
 					} else {
 						// Если автозапуск выключен, сбой не логируется как критический аварийный DOWN.
 						// Однако, если служба до этого физически работала (oldRunning), мы отправляем предупреждение об остановке (DISABLED)
 						if lastFixedState == "running" {
 							slog.Info("Внутренний сервис Webadmin отключен (ушел в сбой при выключенном автозапуске)", "parent", parentName, "service", newItem.Name)
-							_ = SendAlert(safeConfig, AlertWebadminDisabled, fullName, "Service stopped (disabled/failed)")
+							alertsToSend = append(alertsToSend, PendingAlert{AlertType: AlertWebadminDisabled, ServiceName: fullName, ErrMsg: "Service stopped (disabled/failed)"})
 						}
 					}
 				}
@@ -543,7 +591,7 @@ func (c *WebadminClient) processSubServices(safeConfig *SafeConfig, svc ServiceC
 				if !oldItem.Enabled && newItem.Enabled && currentState != "running" {
 					errDesc := fmt.Sprintf("active_state=%s, sub_state=%s (detected on autostart enable)", newItem.Status.ActiveState, newItem.Status.SubState)
 					slog.Warn("Внутренний сервис Webadmin лежит при включении автозапуска", "parent", parentName, "service", newItem.Name, "details", errDesc)
-					_ = SendAlert(safeConfig, AlertDown, fullName, errDesc)
+					alertsToSend = append(alertsToSend, PendingAlert{AlertType: AlertDown, ServiceName: fullName, ErrMsg: errDesc})
 				}
 
 				// Обновляем зафиксированное состояние и чистим историю.
@@ -566,20 +614,22 @@ func (c *WebadminClient) processSubServices(safeConfig *SafeConfig, svc ServiceC
 			newRunning := newItem.Status.ActiveState == "active" && newItem.Status.SubState == "running"
 			if newRunning {
 				if newItem.Enabled {
-					_ = SendAlert(safeConfig, AlertUp, fullName, "New service running")
+					alertsToSend = append(alertsToSend, PendingAlert{AlertType: AlertUp, ServiceName: fullName, ErrMsg: "New service running"})
 				} else {
-					_ = SendAlert(safeConfig, AlertWebadminEnabled, fullName, "New service running (manual)")
+					alertsToSend = append(alertsToSend, PendingAlert{AlertType: AlertWebadminEnabled, ServiceName: fullName, ErrMsg: "New service running (manual)"})
 				}
 			} else {
 				if newItem.Enabled {
-					_ = SendAlert(safeConfig, AlertDown, fullName, "New service not running")
+					alertsToSend = append(alertsToSend, PendingAlert{AlertType: AlertDown, ServiceName: fullName, ErrMsg: "New service not running"})
 				} else {
-					_ = SendAlert(safeConfig, AlertWebadminDisabled, fullName, "New service stopped")
+					alertsToSend = append(alertsToSend, PendingAlert{AlertType: AlertWebadminDisabled, ServiceName: fullName, ErrMsg: "New service stopped"})
 				}
 			}
 			c.subStates[sName] = newItem
 		}
 	}
+
+	return alertsToSend
 }
 
 // Вспомогательный метод для определения работоспособности подсервиса.

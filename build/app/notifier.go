@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -28,6 +29,13 @@ type BotPayload struct {
 	Text string `json:"text"`
 }
 
+var (
+	// Глобальные переменные для управления троттлингом алертов при неисправности notify-bot
+	lastNotifyBotErrorTime time.Time
+	notifyBotCooldown      = 30 * time.Second
+	notifyBotMu            sync.Mutex
+)
+
 // Отправляет оповещение о событии изменения статуса сервиса в notify-bot.
 func SendAlert(safeConfig *SafeConfig, alertType AlertType, serviceName string, errMsg string) error {
 	cfg := safeConfig.Get()
@@ -35,6 +43,15 @@ func SendAlert(safeConfig *SafeConfig, alertType AlertType, serviceName string, 
 		slog.Warn("NOTIFY_BOT_URL пуст, отправка уведомления пропущена", "service", serviceName)
 		return nil
 	}
+
+	// Проверяем статус кулдауна notify-bot при длительных сетевых сбоях
+	notifyBotMu.Lock()
+	if !lastNotifyBotErrorTime.IsZero() && time.Since(lastNotifyBotErrorTime) < notifyBotCooldown {
+		notifyBotMu.Unlock()
+		slog.Debug("Отправка алерта пропущена: активен период охлаждения (cool-down) из-за недоступности notify-bot", "service", serviceName)
+		return fmt.Errorf("notify-bot is temporarily in cool-down mode")
+	}
+	notifyBotMu.Unlock()
 
 	// Выбираем соответствующий шаблон сообщения.
 	var template string
@@ -84,18 +101,31 @@ func SendAlert(safeConfig *SafeConfig, alertType AlertType, serviceName string, 
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
+		notifyBotMu.Lock()
+		lastNotifyBotErrorTime = time.Now()
+		notifyBotMu.Unlock()
+
 		wrapErr := fmt.Errorf("ошибка при выполнении сетевого запроса к notify-bot: %w", err)
-		slog.Error("Не удалось отправить уведомление в notify-bot", "service", serviceName, "type", alertType, "error", wrapErr.Error())
+		slog.Error("Не удалось отправить уведомление в notify-bot (включен cool-down на 30с)", "service", serviceName, "type", alertType, "error", wrapErr.Error())
 		return wrapErr
 	}
 	defer resp.Body.Close()
 
 	// Проверяем код ответа. Ожидаем 200 OK или 202 Accepted.
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
+		notifyBotMu.Lock()
+		lastNotifyBotErrorTime = time.Now()
+		notifyBotMu.Unlock()
+
 		wrapErr := fmt.Errorf("notify-bot вернул некорректный статус ответа: %s", resp.Status)
-		slog.Error("Не удалось отправить уведомление в notify-bot", "service", serviceName, "type", alertType, "error", wrapErr.Error())
+		slog.Error("Не удалось отправить уведомление в notify-bot (включен cool-down на 30с)", "service", serviceName, "type", alertType, "error", wrapErr.Error())
 		return wrapErr
 	}
+
+	// Успешная доставка — сбрасываем счетчик кулдауна
+	notifyBotMu.Lock()
+	lastNotifyBotErrorTime = time.Time{}
+	notifyBotMu.Unlock()
 
 	slog.Info("Уведомление успешно доставлено в notify-bot", "service", serviceName, "type", alertType)
 	return nil

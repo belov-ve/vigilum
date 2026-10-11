@@ -4,7 +4,7 @@ services:
     build:
       context: .
       dockerfile: build/Dockerfile
-    image: vigilum:1.4.0
+    image: vigilum:1.4.1
     container_name: vigilum
     volumes:
       - ./config.yaml:/app/config.yaml
@@ -37,7 +37,7 @@ services:
     build:
       context: .
       dockerfile: build/admin/Dockerfile
-    image: vigilum-admin:1.4.0
+    image: vigilum-admin:1.4.1
     container_name: vigilum-admin
     volumes:
       - ./config.yaml:/app/config.yaml
