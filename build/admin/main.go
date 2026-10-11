@@ -178,6 +178,13 @@ func main() {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
+	// Создаем главный контекст приложения для фоновых задач.
+	appCtx, appCancel := context.WithCancel(context.Background())
+	defer appCancel()
+
+	// Запускаем фоновую асинхронную горутину для неблокирующего получения параметров по умолчанию от демона Vigilum.
+	go fetchDefaultsAsync(appCtx)
+
 	go func() {
 		slog.Info("Панель управления запущена", "address", "http://localhost:"+port, "config", configPath)
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -299,8 +306,8 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 // Middleware для авторизации на основе сессионных Cookies.
 func sessionAuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Разрешаем свободный доступ к главной странице и эндпоинту входа
-		if r.URL.Path == "/" || r.URL.Path == "/api/auth/login" {
+		// Разрешаем свободный доступ к главной странице, авторизации и сбросу сессии
+		if r.URL.Path == "/" || r.URL.Path == "/api/auth/login" || r.URL.Path == "/api/auth/logout" {
 			// Отладочное логирование доступа к публичным путям
 			slog.Debug("Доступ разрешен к публичному эндпоинту", "path", r.URL.Path)
 			next.ServeHTTP(w, r)
@@ -504,9 +511,10 @@ func handleExportConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Заголовки для скачивания: браузер откроет диалог сохранения файла.
+	// Заголовки для скачивания: генерируем динамическое имя файла вида config-vigilum-YYYYMMDD-HHMM.yaml
+	filename := fmt.Sprintf("config-vigilum-%s.yaml", time.Now().Format("20060102-1504"))
 	w.Header().Set("Content-Type", "application/yaml")
-	w.Header().Set("Content-Disposition", `attachment; filename="config.yaml"`)
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(fileBytes)
 }
@@ -568,12 +576,59 @@ func handleImportConfig(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(`{"status":"imported"}`))
 }
 
+// Асинхронная фоновая горутина для периодического получения параметров по умолчанию от демона Vigilum.
+// Не блокирует HTTP-обработчики и чтение конфигураций.
+func fetchDefaultsAsync(ctx context.Context) {
+	client := http.Client{
+		Timeout: 500 * time.Millisecond,
+	}
+
+	ticker := time.NewTicker(15 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		defaultsMu.Lock()
+		alreadyFetched := defaultsFetched
+		defaultsMu.Unlock()
+
+		// Пробуем запросить параметры от демона
+		resp, err := client.Get(vigilumAPIURL + "/api/defaults")
+		if err == nil {
+			if resp.StatusCode == http.StatusOK {
+				var defaults struct {
+					DefaultRetries       int    `json:"default_retries"`
+					DefaultRetryInterval string `json:"default_retry_interval"`
+				}
+				if json.NewDecoder(resp.Body).Decode(&defaults) == nil {
+					defaultsMu.Lock()
+					cachedDefaultRetries = defaults.DefaultRetries
+					cachedDefaultRetryInterval = defaults.DefaultRetryInterval
+					defaultsFetched = true
+					defaultsMu.Unlock()
+
+					if !alreadyFetched {
+						slog.Info("Успешно получены и кэшированы параметры по умолчанию от демона Vigilum", "default_retries", defaults.DefaultRetries, "default_retry_interval", defaults.DefaultRetryInterval)
+					}
+				}
+			}
+			resp.Body.Close()
+		}
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
 // Вспомогательная функция чтения файла конфигурации.
+// Выполняет неблокирующее чтение из локального кэша и файла без внешних HTTP-запросов.
 func readConfigFile() (*Config, error) {
 	fileBytes, err := os.ReadFile(configPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			// Определяем значения по умолчанию
+			// Определяем значения по умолчанию из локального кэша или переменных окружения
 			retriesVal := defaultRetries
 			retryIntervalVal := defaultRetryInterval
 
@@ -581,33 +636,8 @@ func readConfigFile() (*Config, error) {
 			if defaultsFetched {
 				retriesVal = cachedDefaultRetries
 				retryIntervalVal = cachedDefaultRetryInterval
-				defaultsMu.Unlock()
-			} else {
-				defaultsMu.Unlock()
-				client := http.Client{
-					Timeout: 200 * time.Millisecond,
-				}
-				resp, err := client.Get(vigilumAPIURL + "/api/defaults")
-				if err == nil {
-					if resp.StatusCode == http.StatusOK {
-						var defaults struct {
-							DefaultRetries       int    `json:"default_retries"`
-							DefaultRetryInterval string `json:"default_retry_interval"`
-						}
-						if json.NewDecoder(resp.Body).Decode(&defaults) == nil {
-							defaultsMu.Lock()
-							cachedDefaultRetries = defaults.DefaultRetries
-							cachedDefaultRetryInterval = defaults.DefaultRetryInterval
-							defaultsFetched = true
-							retriesVal = cachedDefaultRetries
-							retryIntervalVal = cachedDefaultRetryInterval
-							defaultsMu.Unlock()
-							slog.Info("Успешно получены и кэшированы параметры по умолчанию от демона Vigilum (при создании пустой конфигурации)", "default_retries", retriesVal, "default_retry_interval", retryIntervalVal)
-						}
-					}
-					resp.Body.Close()
-				}
 			}
+			defaultsMu.Unlock()
 
 			// Если файл не существует, возвращаем пустую конфигурацию.
 			return &Config{
@@ -624,7 +654,7 @@ func readConfigFile() (*Config, error) {
 		return nil, err
 	}
 
-	// Определяем значения по умолчанию
+	// Определяем значения по умолчанию из локального кэша или переменных окружения
 	retriesVal := defaultRetries
 	retryIntervalVal := defaultRetryInterval
 
@@ -632,35 +662,10 @@ func readConfigFile() (*Config, error) {
 	if defaultsFetched {
 		retriesVal = cachedDefaultRetries
 		retryIntervalVal = cachedDefaultRetryInterval
-		defaultsMu.Unlock()
-	} else {
-		defaultsMu.Unlock()
-		client := http.Client{
-			Timeout: 200 * time.Millisecond,
-		}
-		resp, err := client.Get(vigilumAPIURL + "/api/defaults")
-		if err == nil {
-			if resp.StatusCode == http.StatusOK {
-				var defaults struct {
-					DefaultRetries       int    `json:"default_retries"`
-					DefaultRetryInterval string `json:"default_retry_interval"`
-				}
-				if json.NewDecoder(resp.Body).Decode(&defaults) == nil {
-					defaultsMu.Lock()
-					cachedDefaultRetries = defaults.DefaultRetries
-					cachedDefaultRetryInterval = defaults.DefaultRetryInterval
-					defaultsFetched = true
-					retriesVal = cachedDefaultRetries
-					retryIntervalVal = cachedDefaultRetryInterval
-					defaultsMu.Unlock()
-					slog.Info("Успешно получены и кэшированы параметры по умолчанию от демона Vigilum", "default_retries", retriesVal, "default_retry_interval", retryIntervalVal)
-				}
-			}
-			resp.Body.Close()
-		}
 	}
+	defaultsMu.Unlock()
 
-	// Устанавливаем значения по умолчанию из переменных окружения
+	// Устанавливаем значения по умолчанию для фронтенда
 	cfg.DefaultRetries = retriesVal
 	cfg.DefaultRetryInterval = retryIntervalVal
 
@@ -746,7 +751,7 @@ func handleGetStatuses(w http.ResponseWriter, r *http.Request) {
 	// Отладочное логирование запроса статусов
 	slog.Debug("Получен запрос статусов сервисов, проксирование к демону Vigilum", "url", vigilumAPIURL)
 	client := http.Client{
-		Timeout: 2 * time.Second,
+		Timeout: 1 * time.Second, // Ограничение таймаута 1 сек для предотвращения зависания панели при сбоях
 	}
 
 	resp, err := client.Get(vigilumAPIURL + "/api/statuses")
