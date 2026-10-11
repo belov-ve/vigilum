@@ -3,12 +3,15 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/cookiejar"
+	"net/url"
+	"strings"
 	"sync"
 	"time"
 )
@@ -77,13 +80,26 @@ func getWebadminClient(svc ServiceConfig) *WebadminClient {
 	registryMu.Lock()
 	defer registryMu.Unlock()
 
+	// Удаляем завершающий слэш из URL для предотвращения двойных слэшей в путях эндпоинтов API
+	targetURL := svc.Target
+	if len(targetURL) > 0 && targetURL[len(targetURL)-1] == '/' {
+		targetURL = targetURL[:len(targetURL)-1]
+	}
+
 	client, exists := clientsRegistry[svc.ID]
 	if !exists {
 		// Инициализация cookie jar для автоматического управления куками сессии.
 		jar, _ := cookiejar.New(nil)
+		// Настраиваем транспорт для игнорирования ошибок самоподписанных SSL-сертификатов (InsecureSkipVerify)
+		transport := &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
+			},
+		}
 		httpClient := &http.Client{
-			Timeout: 5 * time.Second,
-			Jar:     jar,
+			Timeout:   5 * time.Second,
+			Jar:       jar,
+			Transport: transport,
 			// Запрещаем автоматическое следование по редиректам, так как X-UI панели
 			// при протухании сессии могут редиректить (302) на форму авторизации.
 			// Вместо этого мы вернем исходный ответ 302 и обработаем его для повторного входа.
@@ -94,7 +110,7 @@ func getWebadminClient(svc ServiceConfig) *WebadminClient {
 
 		client = &WebadminClient{
 			id:           svc.ID,
-			targetURL:    svc.Target,
+			targetURL:    targetURL,
 			username:     svc.Username,
 			password:     svc.Password,
 			httpClient:   httpClient,
@@ -102,17 +118,17 @@ func getWebadminClient(svc ServiceConfig) *WebadminClient {
 			subHistories: make(map[string]SubServiceHistory),
 		}
 		clientsRegistry[svc.ID] = client
-		slog.Debug("Инициализирован новый клиент Webadmin", "id", svc.ID, "target", svc.Target)
+		slog.Debug("Инициализирован новый клиент Webadmin", "id", svc.ID, "target", targetURL)
 	} else {
 		// Если клиент уже существует, проверяем, не изменились ли настройки подключения/авторизации.
 		client.mu.Lock()
-		if client.targetURL != svc.Target || client.username != svc.Username || client.password != svc.Password {
+		if client.targetURL != targetURL || client.username != svc.Username || client.password != svc.Password {
 			slog.Info("Обнаружено изменение настроек авторизации/URL для Webadmin. Сброс сессионных кук.", "id", svc.ID)
 			// При изменении реквизитов подключения сбрасываем только сессию (cookie jar),
 			// но сохраняем историю состояний подсервисов и флаг инициализации.
 			jar, _ := cookiejar.New(nil)
 			client.httpClient.Jar = jar
-			client.targetURL = svc.Target
+			client.targetURL = targetURL
 			client.username = svc.Username
 			client.password = svc.Password
 		}
@@ -125,10 +141,6 @@ func getWebadminClient(svc ServiceConfig) *WebadminClient {
 // Главная функция проверки работоспособности Webadmin, вызываемая из checker.go.
 func checkWebadmin(ctx context.Context, safeConfig *SafeConfig, svc ServiceConfig) error {
 	client := getWebadminClient(svc)
-
-	// Блокируем мьютекс клиента на время проведения транзакции проверки.
-	client.mu.Lock()
-	defer client.mu.Unlock()
 
 	// 1. Проверяем работоспособность самой службы Webadmin (healthcheck /api/system/status).
 	if err := client.checkSystemStatus(ctx); err != nil {
@@ -144,22 +156,52 @@ func checkWebadmin(ctx context.Context, safeConfig *SafeConfig, svc ServiceConfi
 	}
 
 	// 3. Анализируем состояние подсервисов и отправляем оповещения при их изменении.
+	// Блокируем мьютекс клиента только на время обновления состояния подсервисов в памяти.
+	client.mu.Lock()
 	client.processSubServices(safeConfig, svc, items)
+	client.mu.Unlock()
 
 	return nil
 }
 
-// Выполняет проверку общего статуса системы Webadmin (без авторизации).
+// Выполняет проверку общего статуса системы Webadmin (поддерживает как старые версии без авторизации, так и новые с обязательной авторизацией).
 func (c *WebadminClient) checkSystemStatus(ctx context.Context) error {
-	reqURL := fmt.Sprintf("%s/api/system/status", c.targetURL)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	c.mu.Lock()
+	targetURL := c.targetURL
+	c.mu.Unlock()
+
+	reqURL := fmt.Sprintf("%s/api/system/status", targetURL)
+
+	// Вспомогательная функция для отправки HTTP GET запроса
+	doRequest := func() (*http.Response, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+		if err != nil {
+			return nil, err
+		}
+		return c.httpClient.Do(req)
+	}
+
+	resp, err := doRequest()
 	if err != nil {
 		return err
 	}
 
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return err
+	// Если сервер возвращает 401 Unauthorized или перенаправляет (302/303/307) на страницу входа,
+	// значит это новая версия Webadmin, требующая авторизации. Выполняем повторный вход и пробуем снова.
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusFound ||
+		resp.StatusCode == http.StatusSeeOther || resp.StatusCode == http.StatusTemporaryRedirect {
+		resp.Body.Close()
+		slog.Warn("Webadmin system status endpoint requires login, performing re-authorization...", "id", c.id, "status", resp.StatusCode)
+
+		if err := c.login(ctx); err != nil {
+			return fmt.Errorf("re-authorization failed: %w", err)
+		}
+
+		// Повторяем запрос статуса системы после успешной авторизации
+		resp, err = doRequest()
+		if err != nil {
+			return err
+		}
 	}
 	defer resp.Body.Close()
 
@@ -193,10 +235,16 @@ func (c *WebadminClient) checkSystemStatus(ctx context.Context) error {
 
 // Выполняет авторизацию в Webadmin для получения сессионной куки.
 func (c *WebadminClient) login(ctx context.Context) error {
-	reqURL := fmt.Sprintf("%s/api/auth/login", c.targetURL)
+	c.mu.Lock()
+	targetURL := c.targetURL
+	username := c.username
+	password := c.password
+	c.mu.Unlock()
+
+	reqURL := fmt.Sprintf("%s/api/auth/login", targetURL)
 	loginData := LoginRequest{
-		Username: c.username,
-		Password: c.password,
+		Username: username,
+		Password: password,
 	}
 
 	jsonBytes, err := json.Marshal(loginData)
@@ -216,6 +264,26 @@ func (c *WebadminClient) login(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+
+	// Если получили 404 и URL содержит "/web-admin", пробуем авторизацию через SSO (vps-auth)
+	if resp.StatusCode == http.StatusNotFound && strings.Contains(targetURL, "/web-admin") {
+		resp.Body.Close()
+		if parsed, parseErr := url.Parse(targetURL); parseErr == nil {
+			ssoURL := fmt.Sprintf("%s://%s/auth/api/login", parsed.Scheme, parsed.Host)
+			slog.Info("Получен 404 на стандартном эндпоинте. Пробуем авторизацию через SSO (vps-auth)...", "id", c.id, "url", ssoURL)
+
+			ssoReq, ssoErr := http.NewRequestWithContext(ctx, http.MethodPost, ssoURL, bytes.NewBuffer(jsonBytes))
+			if ssoErr != nil {
+				return ssoErr
+			}
+			ssoReq.Header.Set("Content-Type", "application/json")
+
+			resp, err = c.httpClient.Do(ssoReq)
+			if err != nil {
+				return err
+			}
+		}
+	}
 	defer resp.Body.Close()
 
 	// Успешным кодом авторизации считаем 200 OK или любые перенаправления (302/303/307),
@@ -233,7 +301,11 @@ func (c *WebadminClient) login(ctx context.Context) error {
 
 // Запрашивает статус конфигураций подсервисов. Автоматически выполняет повторную авторизацию при 401 ошибке.
 func (c *WebadminClient) fetchConfigs(ctx context.Context) ([]WebadminConfigItem, error) {
-	reqURL := fmt.Sprintf("%s/api/configs", c.targetURL)
+	c.mu.Lock()
+	targetURL := c.targetURL
+	c.mu.Unlock()
+
+	reqURL := fmt.Sprintf("%s/api/configs", targetURL)
 
 	// Вспомогательная функция для выполнения запроса.
 	doRequest := func() (*http.Response, error) {

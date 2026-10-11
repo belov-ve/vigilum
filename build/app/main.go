@@ -52,7 +52,7 @@ var (
 func main() {
 	// 1. Инициализация структурированного логирования со строгими уровнями.
 	initLogger()
-	slog.Info("Запуск сервиса Vigilum v1.3.3")
+	slog.Info("Запуск сервиса Vigilum v1.4.0")
 
 	// 2. Первоначальная загрузка конфигурации.
 	cfg, err := LoadConfig()
@@ -378,13 +378,16 @@ func startHealthCheckServer(ctx context.Context, safeConfig *SafeConfig) {
 	mux.HandleFunc("/api/statuses", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		
-		// Чтение глобальной карты под RLock
+		// Чтение глобальной карты под RLock и создание локальной копии
 		statusesMu.RLock()
-		defer statusesMu.RUnlock()
-		
-		// Создаем копию карты статусов с добавлением подсервисов для webadmin-панелей
-		responseMap := make(map[string]ServiceStatus)
+		responseMap := make(map[string]ServiceStatus, len(serviceStatuses))
 		for id, status := range serviceStatuses {
+			responseMap[id] = status
+		}
+		statusesMu.RUnlock()
+		
+		// Обогащаем копию статусами подсервисов без удержания statusesMu
+		for id, status := range responseMap {
 			// Проверяем наличие клиента Webadmin в реестре
 			registryMu.Lock()
 			client, ok := clientsRegistry[id]
@@ -405,8 +408,8 @@ func startHealthCheckServer(ctx context.Context, safeConfig *SafeConfig) {
 				}
 				client.mu.Unlock()
 				status.SubServices = subs
+				responseMap[id] = status
 			}
-			responseMap[id] = status
 		}
 		
 		w.WriteHeader(http.StatusOK)
